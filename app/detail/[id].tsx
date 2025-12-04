@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, ScrollView, Alert, TouchableOpacity } from 'react-native';
+import { View, Text, SafeAreaView, ScrollView, Alert, TouchableOpacity, Image } from 'react-native';
 import { VStack, FormControl, Input, InputField, Button, Box, HStack, LinearGradient, FormControlLabel, FormControlLabelText, Badge } from '@gluestack-ui/themed';
 import { router, useLocalSearchParams } from 'expo-router';
 import { CameraIcon, ImageIcon, PlusIcon, PackageIcon, MapPinIcon, UserIcon, CalendarIcon } from 'lucide-react-native';
+import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import PhotoItem from '@/components/PhotoItem';
 import { mockAwbDetail } from '@/mocks/awbList';
 
@@ -10,12 +11,6 @@ const DetailScreen = () => {
   const params = useLocalSearchParams();
   const { id } = params;
   const [awbNumber, setAwbNumber] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
-  const [weight, setWeight] = useState('');
-  const [dimensions, setDimensions] = useState('');
-  const [notes, setNotes] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [initialPhoto, setInitialPhoto] = useState<string | null>(null);
 
@@ -30,12 +25,6 @@ const DetailScreen = () => {
     // Load AWB detail (in real app, this would come from API)
     if (id !== 'new') {
       setAwbNumber(mockAwbDetail.awbNumber);
-      setCustomerName(mockAwbDetail.customerName || '');
-      setOrigin(mockAwbDetail.origin || '');
-      setDestination(mockAwbDetail.destination || '');
-      setWeight(mockAwbDetail.weight || '');
-      setDimensions(mockAwbDetail.dimensions || '');
-      setNotes(mockAwbDetail.notes || '');
       setPhotos(mockAwbDetail.photos);
     }
   }, [id]);
@@ -44,6 +33,29 @@ const DetailScreen = () => {
     const newPhotos = [...photos];
     newPhotos.splice(index, 1);
     setPhotos(newPhotos);
+  };
+
+  const handleAddPhoto = async () => {
+    // Request camera permissions
+    const { status } = await requestCameraPermissionsAsync();
+
+    if (status === 'granted') {
+      // Open camera to capture photo using expo-image-picker
+      const result = await launchCameraAsync({
+        mediaTypes: MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const newPhotoUri = result.assets[0].uri;
+        // Add the new photo to the array of additional photos
+        setPhotos(prevPhotos => [...prevPhotos, newPhotoUri]);
+      }
+    } else {
+      Alert.alert('Permission required', 'Camera permission is required to add photos.');
+    }
   };
 
   const handleSave = () => {
@@ -99,9 +111,9 @@ const DetailScreen = () => {
             paddingTop: 20
           }}
         >
-          <VStack px="md" space="md">
+          <VStack p={10} space="md">
             {/* Header */}
-            <VStack mb="lg" px="sm">
+            <VStack space='md'>
               <HStack alignItems="center" space="md">
                 <Box
                   w="$12"
@@ -159,155 +171,45 @@ const DetailScreen = () => {
                   </Input>
                 </FormControl>
 
-                {/* Customer and Origin/Destination Fields */}
-                <HStack space="md">
-                  <FormControl flex={1}>
+                {/* Main Header Photo */}
+                {photos.length > 0 && (
+                  <FormControl mb="md">
                     <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Customer</FormControlLabelText>
+                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Header Photo</FormControlLabelText>
                     </FormControlLabel>
-                    <Input
-                      borderRadius="$lg"
-                      borderColor="$borderLight200"
+                    <Box
                       borderWidth={1}
-                      py="sm"
-                      px="md"
+                      borderColor="$borderLight300"
+                      borderRadius="$xl"
+                      overflow="hidden"
+                      width="100%"
+                      height={200}
+                      mb="$3"
                       bg="$background50"
                     >
-                      <InputField
-                        placeholder="Customer name"
-                        value={customerName}
-                        onChangeText={setCustomerName}
-                        color="$text900"
+                      <Image
+                        source={{ uri: photos[0] }}
+                        style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
                       />
-                    </Input>
+                    </Box>
                   </FormControl>
-                </HStack>
+                )}
 
-                <HStack space="md">
-                  <FormControl flex={1}>
-                    <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Origin</FormControlLabelText>
-                    </FormControlLabel>
-                    <Input
-                      borderRadius="$lg"
-                      borderColor="$borderLight200"
-                      borderWidth={1}
-                      py="sm"
-                      px="md"
-                      bg="$background50"
-                    >
-                      <InputField
-                        placeholder="Origin city"
-                        value={origin}
-                        onChangeText={setOrigin}
-                        color="$text900"
-                      />
-                    </Input>
-                  </FormControl>
-
-                  <FormControl flex={1}>
-                    <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Destination</FormControlLabelText>
-                    </FormControlLabel>
-                    <Input
-                      borderRadius="$lg"
-                      borderColor="$borderLight200"
-                      borderWidth={1}
-                      py="sm"
-                      px="md"
-                      bg="$background50"
-                    >
-                      <InputField
-                        placeholder="Destination city"
-                        value={destination}
-                        onChangeText={setDestination}
-                        color="$text900"
-                      />
-                    </Input>
-                  </FormControl>
-                </HStack>
-
-                {/* Weight and Dimensions Fields */}
-                <HStack space="md">
-                  <FormControl flex={1}>
-                    <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Weight</FormControlLabelText>
-                    </FormControlLabel>
-                    <Input
-                      borderRadius="$lg"
-                      borderColor="$borderLight200"
-                      borderWidth={1}
-                      py="sm"
-                      px="md"
-                      bg="$background50"
-                    >
-                      <InputField
-                        placeholder="e.g. 2.5 kg"
-                        value={weight}
-                        onChangeText={setWeight}
-                        color="$text900"
-                      />
-                    </Input>
-                  </FormControl>
-
-                  <FormControl flex={1}>
-                    <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Dimensions</FormControlLabelText>
-                    </FormControlLabel>
-                    <Input
-                      borderRadius="$lg"
-                      borderColor="$borderLight200"
-                      borderWidth={1}
-                      py="sm"
-                      px="md"
-                      bg="$background50"
-                    >
-                      <InputField
-                        placeholder="e.g. 30x20x15 cm"
-                        value={dimensions}
-                        onChangeText={setDimensions}
-                        color="$text900"
-                      />
-                    </Input>
-                  </FormControl>
-                </HStack>
-
+                {/* Additional Photos */}
                 <FormControl>
                   <FormControlLabel mb="sm">
-                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Notes</FormControlLabelText>
-                  </FormControlLabel>
-                  <Input
-                    borderRadius="$lg"
-                    borderColor="$borderLight200"
-                    borderWidth={1}
-                    py="sm"
-                    px="md"
-                    bg="$background50"
-                  >
-                    <InputField
-                      placeholder="Additional notes"
-                      value={notes}
-                      onChangeText={setNotes}
-                      color="$text900"
-                    />
-                  </Input>
-                </FormControl>
-
-                {/* Photo Gallery */}
-                <FormControl>
-                  <FormControlLabel mb="sm">
-                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Photos</FormControlLabelText>
+                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Additional Photos</FormControlLabelText>
                   </FormControlLabel>
                   <HStack flexWrap="wrap" mb="sm">
-                    {photos.map((photo, index) => (
+                    {photos.slice(1).map((photo, index) => (
                       <PhotoItem
-                        key={index}
+                        key={index + 1} // Adjust key to account for the first photo being excluded
                         uri={photo}
-                        onDelete={() => handleDeletePhoto(index)}
+                        onDelete={() => handleDeletePhoto(index + 1)} // index+1 because we slice from index 1
                       />
                     ))}
                     {/* Add Photo Card */}
-                    <TouchableOpacity>
+                    <TouchableOpacity onPress={handleAddPhoto}>
                       <Box
                         borderWidth={1}
                         borderColor="$borderLight300"
@@ -336,6 +238,7 @@ const DetailScreen = () => {
                   py="sm"
                   bg="$background50"
                   _text={{ color: '$primary600', fontWeight: '600' }}
+                  onPress={handleAddPhoto}
                 >
                   <HStack alignItems="center" space="sm">
                     <CameraIcon size={16} color="#0284C7" />

@@ -116,7 +116,6 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 8,
     borderRadius: 12,
-    transition: 'all 0.2s ease',
   },
   activeTab: {
     backgroundColor: 'rgba(2, 132, 199, 0.1)',
@@ -133,11 +132,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   spacer: {
-    width: 60,
+    width: 80,
   },
   addButton: {
     position: 'absolute',
-    
     left: '50%',
     marginLeft: -30,
     width: 60,
