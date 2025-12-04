@@ -7,7 +7,8 @@ import PhotoItem from '@/components/PhotoItem';
 import { mockAwbDetail } from '@/mocks/awbList';
 
 const DetailScreen = () => {
-  const { id } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const { id } = params;
   const [awbNumber, setAwbNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [origin, setOrigin] = useState('');
@@ -20,10 +21,10 @@ const DetailScreen = () => {
 
   useEffect(() => {
     // Load initial photo from params if provided
-    const initialPhotoParam = router.getState()?.params?.initialPhoto;
+    const initialPhotoParam = params.initialPhoto as string | undefined;
     if (initialPhotoParam) {
-      setInitialPhoto(initialPhotoParam as string);
-      setPhotos([initialPhotoParam as string]);
+      setInitialPhoto(initialPhotoParam);
+      setPhotos([initialPhotoParam]);
     }
 
     // Load AWB detail (in real app, this would come from API)

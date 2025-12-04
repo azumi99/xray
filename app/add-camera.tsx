@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, SafeAreaView, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { VStack, HStack, Box } from '@gluestack-ui/themed';
 import { router } from 'expo-router';
-import { XIcon, CameraIcon, CameraFlipIcon, ImageIcon, PackageIcon } from 'lucide-react-native';
+import { XIcon, CameraIcon, RotateCcwIcon, ImageIcon, PackageIcon } from 'lucide-react-native';
 import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
 
 const AddCameraScreen = () => {
@@ -104,7 +104,7 @@ const AddCameraScreen = () => {
           </HStack>
           <TouchableOpacity onPress={toggleCameraFacing}>
             <Box bg="rgba(0,0,0,0.5)" p="$3" borderRadius="$full" style={styles.overlayButton}>
-              <CameraFlipIcon color="#FFFFFF" size={20} />
+              <RotateCcwIcon color="#FFFFFF" size={20} />
             </Box>
           </TouchableOpacity>
         </HStack>

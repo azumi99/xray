@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Box, HStack } from '@gluestack-ui/themed';
-import { PackageIcon, UserIcon, PlusIcon, HomeIcon } from 'lucide-react-native';
+import { PackageIcon, UserIcon, PlusIcon } from 'lucide-react-native';
 
 const BottomNav = () => {
   const router = useRouter();
@@ -21,8 +21,8 @@ const BottomNav = () => {
     <Box
       position="absolute"
       bottom={10}
-      left={10}
-      right={10}
+      left="10%"
+      right="10%"
       borderRadius="$3xl"
       bg="rgba(255, 255, 255, 0.95)"
       shadow="$6"
@@ -32,6 +32,7 @@ const BottomNav = () => {
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.2)',
       }}
+      pb="$8"
     >
       <HStack alignItems="center" justifyContent="space-around" px="lg" py="sm">
         {/* List Tab */}
@@ -136,22 +137,26 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    top: -28,
+    
     left: '50%',
-    marginLeft: -28,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    marginLeft: -30,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     backgroundColor: '#0284C7',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 10,
+    borderWidth: 2,
+    borderColor: 'white',
   },
   addInnerButton: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'transparent',
   },
 });
 
