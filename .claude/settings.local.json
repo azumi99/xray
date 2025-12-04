@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls:*)",
+      "Bash(yarn add:*)",
+      "Bash(npx tsc:*)",
+      "Bash(yarn remove:*)",
+      "Bash(npx expo install:*)",
+      "Bash(npx expo r:*)",
+      "Bash(npx expo start:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

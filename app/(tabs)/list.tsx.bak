@@ -1,0 +1,224 @@
+import React, { useState } from 'react';
+import { View, Text, SafeAreaView, ScrollView, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { VStack, Input, InputField, InputIcon, InputSlot, HStack, Box, LinearGradient, Badge } from '@gluestack-ui/themed';
+import { SearchIcon, PackageIcon, CalendarIcon, FilterIcon, ArrowUpIcon } from 'lucide-react-native';
+import AwbListItem from '@/components/AwbListItem';
+import EmptyState from '@/components/EmptyState';
+import { mockAwbList } from '@/mocks/awbList';
+import { formatDateTime } from '@/utils/formatDate';
+
+const ListScreen = () => {
+  const [awbList, setAwbList] = useState(mockAwbList);
+  const [filteredAwbList, setFilteredAwbList] = useState(mockAwbList);
+  const [refreshing, setRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1000);
+  };
+
+  const handleSearch = (query: string) => {
+    setSearchQuery(query);
+    if (query.trim() === '') {
+      setFilteredAwbList(awbList);
+    } else {
+      const filtered = awbList.filter(item =>
+        item.awbNumber.toLowerCase().includes(query.toLowerCase())
+      );
+      setFilteredAwbList(filtered);
+    }
+  };
+
+  const handleItemPress = (id: string) => {
+    console.log('Navigate to detail for id:', id);
+  };
+
+  const scrollToTop = () => {
+    // Implementation for scroll to top would go here
+    // This requires a ref to the ScrollView
+  };
+
+  return (
+    <Box flex={1} bg="$background0">
+      <LinearGradient
+        colors={['#F0F9FF', '#FFFFFF']}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200 }}
+      />
+      <SafeAreaView style={{ flex: 1 }}>
+        <ScrollView
+          contentContainerStyle={{ paddingBottom: 120 }}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#0284C7']}
+              tintColor="#0284C7"
+            />
+          }
+          onScroll={(e) => {
+            const scrollY = e.nativeEvent.contentOffset.y;
+            setShowScrollTop(scrollY > 300);
+          }}
+          scrollEventThrottle={16}
+        >
+          <VStack p="lg" pt="xl" space="lg">
+            {/* Enhanced Header */}
+            <VStack mb="md">
+              <HStack alignItems="center" justifyContent="space-between" mb="sm">
+                <HStack alignItems="center" space="md">
+                  <Box
+                    w="$12"
+                    h="$12"
+                    borderRadius="$2xl"
+                    bg="$primary600"
+                    alignItems="center"
+                    justifyContent="center"
+                    shadow="$2"
+                  >
+                    <PackageIcon size={24} color="white" />
+                  </Box>
+                  <VStack>
+                    <Text fontWeight="$bold" fontSize="$2xl" color="$text0">
+                      AWB List
+                    </Text>
+                    <Text color="$text400" fontSize="$sm">
+                      Manage your airwaybills
+                    </Text>
+                  </VStack>
+                </HStack>
+
+                <TouchableOpacity style={styles.filterButton}>
+                  <Box
+                    w="$10"
+                    h="$10"
+                    borderRadius="$full"
+                    bg="$background100"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <FilterIcon size={18} color="#6B7280" />
+                  </Box>
+                </TouchableOpacity>
+              </HStack>
+            </VStack>
+
+            {/* Enhanced Search Bar */}
+            <Box mb="md">
+              <Input
+                borderRadius="$2xl"
+                bg="$background0"
+                py="sm"
+                px="md"
+                borderWidth={1}
+                borderColor="$background200"
+                shadow="$1"
+              >
+                <InputIcon as={SearchIcon} ml="xs" color="$text400" size="sm" />
+                <InputField
+                  placeholder="Search by AWB number..."
+                  value={searchQuery}
+                  onChangeText={handleSearch}
+                  color="$text0"
+                  fontSize="$md"
+                />
+                {searchQuery.length > 0 && (
+                  <InputSlot pr="$3">
+                    <TouchableOpacity onPress={() => handleSearch('')}>
+                      <Text color="$text400" fontSize="$sm">Clear</Text>
+                    </TouchableOpacity>
+                  </InputSlot>
+                )}
+              </Input>
+            </Box>
+
+            {/* Stats Row */}
+            <HStack justifyContent="space-between" alignItems="center" mb="md">
+              <HStack alignItems="center" space="sm">
+                <Badge
+                  bg="$primary100"
+                  px="$3"
+                  py="$1"
+                  borderRadius="$full"
+                >
+                  <Text color="$primary600" fontWeight="$600" fontSize="$sm">
+                    {filteredAwbList.length} items
+                  </Text>
+                </Badge>
+                {filteredAwbList.length > 0 && (
+                  <HStack alignItems="center" space="xs">
+                    <CalendarIcon size={12} color="#6B7280" />
+                    <Text fontSize="$xs" color="$text400">Last updated today</Text>
+                  </HStack>
+                )}
+              </HStack>
+            </HStack>
+
+            {/* AWB List or Empty State */}
+            {filteredAwbList.length > 0 ? (
+              <VStack space="sm">
+                {filteredAwbList.map((item, index) => (
+                  <AwbListItem
+                    key={item.id}
+                    awbNumber={item.awbNumber}
+                    date={formatDateTime(item.date)}
+                    onPress={() => handleItemPress(item.id)}
+                    index={index}
+                  />
+                ))}
+              </VStack>
+            ) : (
+              <EmptyState
+                title="No AWB Found"
+                subtitle={
+                  searchQuery
+                    ? "Try adjusting your search terms"
+                    : "Capture your first airwaybill using the + button"
+                }
+                icon={searchQuery ? SearchIcon : PackageIcon}
+              />
+            )}
+          </VStack>
+        </ScrollView>
+
+        {/* Scroll to Top Button */}
+        {showScrollTop && (
+          <TouchableOpacity
+            onPress={scrollToTop}
+            style={styles.scrollToTopButton}
+            activeOpacity={0.8}
+          >
+            <Box
+              w="$12"
+              h="$12"
+              borderRadius="$full"
+              bg="$primary600"
+              alignItems="center"
+              justifyContent="center"
+              shadow="$4"
+            >
+              <ArrowUpIcon size={20} color="white" />
+            </Box>
+          </TouchableOpacity>
+        )}
+      </SafeAreaView>
+    </Box>
+  );
+};
+
+const styles = {
+  filterButton: {
+    borderRadius: 50,
+  },
+  scrollToTopButton: {
+    position: 'absolute' as const,
+    bottom: 100,
+    right: 20,
+    borderRadius: 50,
+  },
+};
+
+export default ListScreen;
