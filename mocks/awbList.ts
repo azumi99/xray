@@ -65,15 +65,6 @@ export const mockAwbList = [
 export const mockAwbDetail = {
   id: '1',
   awbNumber: 'ID1234567890',
-  date: '2024-12-01T10:30:00',
-  status: 'new',
-  customerName: 'PT. Maju Jaya',
-  origin: 'Jakarta',
-  destination: 'Surabaya',
-  photos: [],
-  senderName: 'John Doe',
-  receiverName: 'Jane Smith',
-  weight: '2.5 kg',
-  dimensions: '30 x 20 x 15 cm',
-  notes: 'Handle with care',
+  photoAirwaybill: null, // No initial photo
+  xrayPhotos: [], // Array for multiple X-ray photos
 };

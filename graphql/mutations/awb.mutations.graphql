@@ -1,0 +1,26 @@
+# AWB Mutations
+
+mutation CreateAwb($input: AWBInput!) {
+  createAwb(input: $input) {
+    id
+    awbNumber
+    photoAirwaybill
+    xrayPhotos
+  }
+}
+
+mutation UpdateAwb($id: ID!, $input: AWBInput!) {
+  updateAwb(id: $id, input: $input) {
+    id
+    awbNumber
+    photoAirwaybill
+    xrayPhotos
+  }
+}
+
+mutation DeleteAwb($id: ID!) {
+  deleteAwb(id: $id) {
+    id
+    awbNumber
+  }
+}

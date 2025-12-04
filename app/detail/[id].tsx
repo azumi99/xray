@@ -11,7 +11,8 @@ const DetailScreen = () => {
   const params = useLocalSearchParams();
   const { id } = params;
   const [awbNumber, setAwbNumber] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photoAirwaybill, setPhotoAirwaybill] = useState<string | null>(null); // Airwaybill photo
+  const [xrayPhotos, setXrayPhotos] = useState<string[]>([]); // Multiple X-ray photos
   const [initialPhoto, setInitialPhoto] = useState<string | null>(null);
 
   useEffect(() => {
@@ -19,23 +20,32 @@ const DetailScreen = () => {
     const initialPhotoParam = params.initialPhoto as string | undefined;
     if (initialPhotoParam) {
       setInitialPhoto(initialPhotoParam);
-      setPhotos([initialPhotoParam]);
+      // Set as photoAirwaybill if this is the primary airwaybill photo
+      setPhotoAirwaybill(initialPhotoParam);
     }
 
     // Load AWB detail (in real app, this would come from API)
     if (id !== 'new') {
       setAwbNumber(mockAwbDetail.awbNumber);
-      setPhotos(mockAwbDetail.photos);
+      // Set photos based on the new structure
+      setPhotoAirwaybill(mockAwbDetail.photoAirwaybill || null);
+      setXrayPhotos(mockAwbDetail.xrayPhotos || []);
     }
   }, [id]);
 
-  const handleDeletePhoto = (index: number) => {
-    const newPhotos = [...photos];
-    newPhotos.splice(index, 1);
-    setPhotos(newPhotos);
+  const handleDeletePhoto = (photoType: 'photoAirwaybill' | 'xrayPhotos', index?: number) => {
+    // Delete the specified photo type
+    if (photoType === 'photoAirwaybill') {
+      setPhotoAirwaybill(null);
+    } else if (photoType === 'xrayPhotos' && index !== undefined) {
+      // Remove photo at the specific index from xrayPhotos array
+      const newPhotos = [...xrayPhotos];
+      newPhotos.splice(index, 1);
+      setXrayPhotos(newPhotos);
+    }
   };
 
-  const handleAddPhoto = async () => {
+  const handleAddPhoto = async (photoType: 'photoAirwaybill' | 'xrayPhotos') => {
     // Request camera permissions
     const { status } = await requestCameraPermissionsAsync();
 
@@ -50,8 +60,13 @@ const DetailScreen = () => {
 
       if (!result.canceled && result.assets && result.assets[0]) {
         const newPhotoUri = result.assets[0].uri;
-        // Add the new photo to the array of additional photos
-        setPhotos(prevPhotos => [...prevPhotos, newPhotoUri]);
+        // Set the appropriate photo type based on parameter
+        if (photoType === 'photoAirwaybill') {
+          setPhotoAirwaybill(newPhotoUri);
+        } else if (photoType === 'xrayPhotos') {
+          // Add to the xrayPhotos array
+          setXrayPhotos(prevPhotos => [...prevPhotos, newPhotoUri]);
+        }
       }
     } else {
       Alert.alert('Permission required', 'Camera permission is required to add photos.');
@@ -64,6 +79,13 @@ const DetailScreen = () => {
       Alert.alert('Error', 'AWB Number is required');
       return;
     }
+
+    // Create AWB object with the updated structure
+    const awbData = {
+      awbNumber,
+      photoAirwaybill,
+      xrayPhotos
+    };
 
     // In UI phase, just show success message
     Alert.alert('Success', 'Saved successfully (dummy)');
@@ -171,80 +193,128 @@ const DetailScreen = () => {
                   </Input>
                 </FormControl>
 
-                {/* Main Header Photo */}
-                {photos.length > 0 && (
-                  <FormControl mb="md">
-                    <FormControlLabel mb="sm">
-                      <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Header Photo</FormControlLabelText>
-                    </FormControlLabel>
-                    <Box
-                      borderWidth={1}
-                      borderColor="$borderLight300"
-                      borderRadius="$xl"
-                      overflow="hidden"
-                      width="100%"
-                      height={200}
-                      mb="$3"
-                      bg="$background50"
-                    >
-                      <Image
-                        source={{ uri: photos[0] }}
-                        style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
-                      />
-                    </Box>
-                  </FormControl>
-                )}
-
-                {/* Additional Photos */}
-                <FormControl>
+                {/* Photo Airwaybill */}
+                <FormControl mb="md">
                   <FormControlLabel mb="sm">
-                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Additional Photos</FormControlLabelText>
+                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">Photo Airwaybill</FormControlLabelText>
                   </FormControlLabel>
-                  <HStack flexWrap="wrap" mb="sm">
-                    {photos.slice(1).map((photo, index) => (
-                      <PhotoItem
-                        key={index + 1} // Adjust key to account for the first photo being excluded
-                        uri={photo}
-                        onDelete={() => handleDeletePhoto(index + 1)} // index+1 because we slice from index 1
-                      />
-                    ))}
-                    {/* Add Photo Card */}
-                    <TouchableOpacity onPress={handleAddPhoto}>
+                  {photoAirwaybill ? (
+                    <Box>
                       <Box
                         borderWidth={1}
                         borderColor="$borderLight300"
-                        borderRadius="$2xl"
+                        borderRadius="$xl"
+                        overflow="hidden"
+                        width="100%"
+                        height={200}
+                        mb="$3"
+                        bg="$background50"
+                      >
+                        <Image
+                          source={{ uri: photoAirwaybill }}
+                          style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                        />
+                      </Box>
+                    </Box>
+                  ) : (
+                    <TouchableOpacity onPress={() => handleAddPhoto('photoAirwaybill')}>
+                      <Box
+                        borderWidth={1}
+                        borderColor="$borderLight300"
+                        borderRadius="$xl"
                         borderStyle="dashed"
                         justifyContent="center"
                         alignItems="center"
-                        width={100}
-                        height={100}
-                        mr="$2"
-                        mb="$2"
+                        width="100%"
+                        height={200}
                         bg="$background50"
                       >
-                        <PlusIcon size={24} color="#9CA3AF" />
+                        <PlusIcon size={40} color="#9CA3AF" />
+                        <Text mt="$2" color="$text400">Add Photo Airwaybill</Text>
                       </Box>
                     </TouchableOpacity>
-                  </HStack>
+                  )}
                 </FormControl>
 
-                {/* Add Photo Button */}
-                <Button
-                  variant="outline"
-                  borderColor="$borderLight300"
-                  borderWidth={1}
-                  borderRadius="$xl"
-                  py="sm"
-                  bg="$background50"
-                  _text={{ color: '$primary600', fontWeight: '600' }}
-                  onPress={handleAddPhoto}
-                >
-                  <HStack alignItems="center" space="sm">
-                    <CameraIcon size={16} color="#0284C7" />
-                    <Text>Add more photos</Text>
-                  </HStack>
-                </Button>
+                {/* X-ray Photos */}
+                <FormControl mb="md">
+                  <FormControlLabel mb="sm">
+                    <FormControlLabelText fontWeight="600" color="$text900" fontSize="$sm">X-ray Photos</FormControlLabelText>
+                  </FormControlLabel>
+                  {xrayPhotos.length > 0 ? (
+                    <VStack space="sm">
+                      {xrayPhotos.map((photo, index) => (
+                        <Box key={index}>
+                          <Box
+                            borderWidth={1}
+                            borderColor="$borderLight300"
+                            borderRadius="$xl"
+                            overflow="hidden"
+                            width="100%"
+                            height={200}
+                            mb="$3"
+                            bg="$background50"
+                          >
+                            <Image
+                              source={{ uri: photo }}
+                              style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                            />
+                          </Box>
+                          <TouchableOpacity
+                            onPress={() => handleDeletePhoto('xrayPhotos', index)}
+                            style={{ alignSelf: 'flex-end' }}
+                          >
+                            <Box
+                              bg="$red500"
+                              borderRadius="$md"
+                              px="$3"
+                              py="$2"
+                            >
+                              <Text color="white" fontSize="$sm">Delete</Text>
+                            </Box>
+                          </TouchableOpacity>
+                        </Box>
+                      ))}
+                      {/* Add More X-ray Photo Button */}
+                      <TouchableOpacity
+                        onPress={() => handleAddPhoto('xrayPhotos')}
+                        style={{ marginTop: 10 }}
+                      >
+                        <Box
+                          borderWidth={1}
+                          borderColor="$borderLight300"
+                          borderRadius="$xl"
+                          borderStyle="dashed"
+                          justifyContent="center"
+                          alignItems="center"
+                          width="100%"
+                          height={100}
+                          bg="$background50"
+                        >
+                          <PlusIcon size={30} color="#9CA3AF" />
+                          <Text mt="$2" color="$text400">Add More X-ray Photo</Text>
+                        </Box>
+                      </TouchableOpacity>
+                    </VStack>
+                  ) : (
+                    <TouchableOpacity onPress={() => handleAddPhoto('xrayPhotos')}>
+                      <Box
+                        borderWidth={1}
+                        borderColor="$borderLight300"
+                        borderRadius="$xl"
+                        borderStyle="dashed"
+                        justifyContent="center"
+                        alignItems="center"
+                        width="100%"
+                        height={200}
+                        bg="$background50"
+                      >
+                        <PlusIcon size={40} color="#9CA3AF" />
+                        <Text mt="$2" color="$text400">Add X-ray Photo</Text>
+                      </Box>
+                    </TouchableOpacity>
+                  )}
+                </FormControl>
               </VStack>
             </Box>
           </VStack>
@@ -263,7 +333,7 @@ const DetailScreen = () => {
           shadow="$4"
           _pressed={{ bg: "linear-gradient(135deg, #0369A1 0%, #075985 100%)" }}
         >
-          <Text color="white" fontWeight="600" fontSize="$md">Save Changes</Text>
+          <Text style={{color: 'white'}} fontWeight="md" fontSize="$md">Save Changes</Text>
         </Button>
       </SafeAreaView>
     </LinearGradient>

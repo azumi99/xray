@@ -1,0 +1,37 @@
+# GraphQL Schema Definition
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
+
+type Query {
+  awbs: [AWB!]!
+  awb(id: ID!): AWB
+}
+
+type Mutation {
+  createAwb(input: AWBInput!): AWB!
+  updateAwb(id: ID!, input: AWBInput!): AWB!
+  deleteAwb(id: ID!): AWB!
+}
+
+type Subscription {
+  awbUpdated(id: ID!): AWB!
+  awbAdded: AWB!
+  awbDeleted: AWB!
+}
+
+type AWB {
+  id: ID!
+  awbNumber: String!
+  photoAirwaybill: String
+  xrayPhotos: [String]
+}
+
+input AWBInput {
+  awbNumber: String!
+  photoAirwaybill: String
+  xrayPhotos: [String]
+}

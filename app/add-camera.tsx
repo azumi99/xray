@@ -2,8 +2,9 @@ import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, SafeAreaView, TouchableOpacity, StyleSheet, Alert, Platform } from 'react-native';
 import { VStack, HStack, Box } from '@gluestack-ui/themed';
 import { router } from 'expo-router';
-import { XIcon, CameraIcon, RotateCcwIcon, ImageIcon, PackageIcon } from 'lucide-react-native';
+import { XIcon, CameraIcon, RotateCcwIcon, ImageIcon, PackageIcon, ArrowLeft } from 'lucide-react-native';
 import { CameraView, useCameraPermissions, CameraType } from 'expo-camera';
+import MaterialIcons from '@expo/vector-icons/MaterialIcons';
 
 const AddCameraScreen = () => {
   const [facing, setFacing] = useState<CameraType>('back');
@@ -94,16 +95,16 @@ const AddCameraScreen = () => {
           justifyContent="space-between"
         >
           <TouchableOpacity onPress={handleBack}>
-            <Box bg="rgba(0,0,0,0.5)" p="$3" borderRadius="$full" style={styles.overlayButton}>
-              <XIcon color="#FFFFFF" size={20} />
+            <Box bg="rgba(0,0,0,0.7)" p="$3" borderRadius="$full" borderWidth={1} borderColor="rgba(255,255,255,0.4)" style={styles.overlayButton} mt={30}>
+              <ArrowLeft color="#FFFFFF" size={24} />
             </Box>
           </TouchableOpacity>
-          <HStack alignItems="center" space="md">
+          <HStack alignItems="center" space="md" flex={1} justifyContent="center">
             <PackageIcon size={20} color="#FFFFFF" />
             <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '600' }}>Capture AWB</Text>
           </HStack>
           <TouchableOpacity onPress={toggleCameraFacing}>
-            <Box bg="rgba(0,0,0,0.5)" p="$3" borderRadius="$full" style={styles.overlayButton}>
+            <Box bg="rgba(0,0,0,0.5)" p="$3" borderRadius="$full" style={styles.overlayButton} mt={30}>
               <RotateCcwIcon color="#FFFFFF" size={20} />
             </Box>
           </TouchableOpacity>

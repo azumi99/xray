@@ -20,33 +20,36 @@ const BottomNav = () => {
   return (
     <Box
       position="absolute"
-      bottom={10}
-      left="10%"
-      right="10%"
-      borderRadius="$3xl"
-      bg="rgba(255, 255, 255, 0.95)"
-      shadow="$6"
-      overflow="hidden"
+      bottom={20}
+      left="5%"
+      right="5%"
+      borderRadius="$2xl"
+      bg="rgba(255, 255, 255, 0.98)"
+      shadow="$4"
       style={{
-        backdropFilter: 'blur(20px)',
+        backdropFilter: 'blur(15px)',
         borderWidth: 1,
-        borderColor: 'rgba(255, 255, 255, 0.2)',
+        borderColor: 'rgba(255, 255, 255, 0.4)',
       }}
-      pb="$8"
+      py="$3"
     >
-      <HStack alignItems="center" justifyContent="space-around" px="lg" py="sm">
+      <HStack alignItems="center" justifyContent="space-around" px="$4">
         {/* List Tab */}
         <TouchableOpacity
           onPress={() => handleTabPress('list', '/(tabs)/list')}
-          style={[
-            styles.tabItem,
-            activeTab === 'list' && styles.activeTab
-          ]}
+          style={[styles.tabItem]}
         >
-          <PackageIcon
-            size={22}
-            color={activeTab === 'list' ? '#0284C7' : '#6B7280'}
-          />
+          <Box
+            bg={activeTab === 'list' ? 'rgba(2, 132, 199, 0.1)' : 'transparent'}
+            p="$2"
+            borderRadius="$full"
+            mb="$1"
+          >
+            <PackageIcon
+              size={20}
+              color={activeTab === 'list' ? '#0284C7' : '#6B7280'}
+            />
+          </Box>
           <Text
             style={[
               styles.tabText,
@@ -57,21 +60,40 @@ const BottomNav = () => {
           </Text>
         </TouchableOpacity>
 
-        {/* Spacer for floating button */}
-        <View style={styles.spacer} />
+        {/* Add Button - Centered and raised */}
+        <TouchableOpacity
+          onPress={handleAddPress}
+          activeOpacity={0.8}
+          style={styles.addButtonContainer}
+        >
+          <Box
+            bg="#0284C7"
+            p="$4"
+            borderRadius="$full"
+            style={styles.addButton}
+            borderWidth={3}
+            borderColor="white"
+          >
+            <PlusIcon size={28} color="white" strokeWidth={3} />
+          </Box>
+        </TouchableOpacity>
 
         {/* Profile Tab */}
         <TouchableOpacity
           onPress={() => handleTabPress('profile', '/(tabs)/profile')}
-          style={[
-            styles.tabItem,
-            activeTab === 'profile' && styles.activeTab
-          ]}
+          style={[styles.tabItem]}
         >
-          <UserIcon
-            size={22}
-            color={activeTab === 'profile' ? '#0284C7' : '#6B7280'}
-          />
+          <Box
+            bg={activeTab === 'profile' ? 'rgba(2, 132, 199, 0.1)' : 'transparent'}
+            p="$2"
+            borderRadius="$full"
+            mb="$1"
+          >
+            <UserIcon
+              size={20}
+              color={activeTab === 'profile' ? '#0284C7' : '#6B7280'}
+            />
+          </Box>
           <Text
             style={[
               styles.tabText,
@@ -82,79 +104,38 @@ const BottomNav = () => {
           </Text>
         </TouchableOpacity>
       </HStack>
-
-      {/* Modern Floating Add Button with Gradient Effect */}
-      <TouchableOpacity
-        onPress={handleAddPress}
-        activeOpacity={0.9}
-        style={[
-          styles.addButton,
-          {
-            shadowColor: '#0284C7',
-            shadowOffset: { width: 0, height: 6 },
-            shadowOpacity: 0.4,
-            shadowRadius: 12,
-            elevation: 12,
-          }
-        ]}
-      >
-        <Box
-          style={styles.addInnerButton}
-          bg="linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%)"
-        >
-          <PlusIcon size={28} color="white" strokeWidth={3} />
-        </Box>
-      </TouchableOpacity>
     </Box>
   );
 };
 
 const styles = StyleSheet.create({
   tabItem: {
-    flex: 1,
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    borderRadius: 12,
-  },
-  activeTab: {
-    backgroundColor: 'rgba(2, 132, 199, 0.1)',
+    flex: 1,
   },
   tabText: {
-    marginTop: 4,
-    fontSize: 11,
+    fontSize: 12,
     color: '#6B7280',
     fontWeight: '500',
-    letterSpacing: 0.2,
   },
   activeTabText: {
     color: '#0284C7',
     fontWeight: '600',
   },
-  spacer: {
-    width: 80,
+  addButtonContainer: {
+    position: 'absolute',
+    top: -25,
+    alignSelf: 'center',
+    zIndex: 10,
   },
   addButton: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -30,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#0284C7',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
+    shadowColor: '#0284C7',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
     borderWidth: 2,
     borderColor: 'white',
-  },
-  addInnerButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'transparent',
   },
 });
 

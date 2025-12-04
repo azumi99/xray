@@ -1,0 +1,14 @@
+# AWB (Air Waybill) Type Definitions
+
+type AWB {
+  id: ID!
+  awbNumber: String!
+  photoAirwaybill: String
+  xrayPhotos: [String]
+}
+
+input AWBInput {
+  awbNumber: String!
+  photoAirwaybill: String
+  xrayPhotos: [String]
+}

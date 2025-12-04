@@ -1,0 +1,19 @@
+# AWB Queries
+
+query GetAwbList {
+  awbs {
+    id
+    awbNumber
+    photoAirwaybill
+    xrayPhotos
+  }
+}
+
+query GetAwb($id: ID!) {
+  awb(id: $id) {
+    id
+    awbNumber
+    photoAirwaybill
+    xrayPhotos
+  }
+}

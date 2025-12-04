@@ -1,0 +1,40 @@
+# AWB Subscriptions
+
+subscription OnAwbUpdate($id: ID!) {
+  awbUpdated(id: $id) {
+    id
+    awbNumber
+    customerName
+    origin
+    destination
+    status
+    date
+    weight
+    dimensions
+    notes
+    photos
+  }
+}
+
+subscription OnAwbAdded {
+  awbAdded {
+    id
+    awbNumber
+    customerName
+    origin
+    destination
+    status
+    date
+    weight
+    dimensions
+    notes
+    photos
+  }
+}
+
+subscription OnAwbDeleted {
+  awbDeleted {
+    id
+    awbNumber
+  }
+}
