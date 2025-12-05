@@ -19,16 +19,17 @@ query GetAwbList {
 }
 
 query GetAwb($id: ID!) {
-  airwaybillXrayDetail(id: $id) {
+  airwaybillXrayWithDetails(id: $id) {
     id
     airwaybill_number
     photo_airwaybill
-    xray_photos {
+    created_at
+    xray_photos_count
+    airwaybillXrayDetails {
       id
-      photo_url
+      id_airwaybill
+      xray_photo
       created_at
     }
-    created_at
-    updated_at
   }
 }
