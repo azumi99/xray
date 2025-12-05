@@ -4,7 +4,11 @@ import { useRouter } from 'expo-router';
 import { Box, HStack } from '@gluestack-ui/themed';
 import { PackageIcon, UserIcon, PlusIcon } from 'lucide-react-native';
 
-const BottomNav = () => {
+interface BottomNavProps {
+  onAddPress?: () => void;
+}
+
+const BottomNav = ({ onAddPress }: BottomNavProps) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('list');
 
@@ -14,7 +18,12 @@ const BottomNav = () => {
   };
 
   const handleAddPress = () => {
-    router.push('/add-camera');
+    if (onAddPress) {
+      onAddPress();
+    } else {
+      // Fallback untuk screens yang tidak menggunakan modal
+      console.log('Add button pressed');
+    }
   };
 
   return (
