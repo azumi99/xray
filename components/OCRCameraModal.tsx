@@ -1,35 +1,62 @@
+import { gql, useMutation } from '@apollo/client';
 import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
-import { extractTextFromImage, isSupported } from 'expo-text-extractor';
-import { Camera as CameraIcon, Copy, FlipHorizontal, X, Zap, ZapOff, Check } from 'lucide-react-native';
+import * as Clipboard from 'expo-clipboard';
+import * as ImagePicker from 'expo-image-picker';
+import { extractTextFromImage } from 'expo-text-extractor';
+import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Plus, X, Zap, ZapOff } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import * as Clipboard from 'expo-clipboard';
 import { COLORS, SPACING } from '../constants/theme';
+import { useAuth } from '../lib/store/auth';
+
+// GraphQL mutation for creating airwaybill
+const CREATE_AIRWAYBILL_MUTATION = gql`
+  mutation CreateAirwaybillXray($input: CreateAirwaybillXrayInput!) {
+    createAirwaybillXray(input: $input) {
+      id
+      airwaybill_number
+      photo_airwaybill
+      created_at
+      updated_at
+      xray_photos_count
+    }
+  }
+`;
 
 type OCRCameraModalProps = {
     visible: boolean;
     onClose: () => void;
+    onCaptureComplete?: (awbNumber: string, xrayImages: string[]) => void;
 };
 
-const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
+const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalProps) => {
     const [permission, requestPermission] = useCameraPermissions();
     const [flash, setFlash] = useState<FlashMode>('off');
     const [facing, setFacing] = useState<CameraType>('back');
     const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
-    const [extractedText, setExtractedText] = useState<string[]>([]);
+    const [extractedText, setExtractedText] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [xrayImages, setXrayImages] = useState<string[]>([]);
+    const [isSaving, setIsSaving] = useState(false);
     const cameraRef = useRef<CameraView>(null);
+
+    // Get session data for authorization
+    const { session } = useAuth();
+
+    // GraphQL mutation hook
+    const [createAirwaybill] = useMutation(CREATE_AIRWAYBILL_MUTATION);
 
     const toggleFlash = () => {
         setFlash((current) => (current === 'off' ? 'on' : 'off'));
@@ -39,69 +66,334 @@ const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
         setFacing((current) => (current === 'back' ? 'front' : 'back'));
     };
 
-    const takePicture = async () => {
-        if (cameraRef.current) {
-            try {
-                const photo = await cameraRef.current.takePictureAsync({
-                    quality: 0.8,
-                    base64: false,
-                });
+    const pickXrayImages = async () => {
+        Alert.alert(
+            'Add X-ray Images',
+            'Choose an option to add X-ray images',
+            [
+                {
+                    text: 'Camera',
+                    onPress: () => takeXrayImage(),
+                },
+                {
+                    text: 'Gallery',
+                    onPress: () => pickXrayFromGallery(),
+                },
+                {
+                    text: 'Cancel',
+                    style: 'cancel',
+                },
+            ]
+        );
+    };
 
-                if (photo?.uri) {
-                    setCapturedPhoto(photo.uri);
-                    await processOCR(photo.uri);
-                } else {
-                    throw new Error('Failed to capture photo');
-                }
-            } catch (error) {
-                console.error('Camera error:', error);
-                Alert.alert('Error', 'Failed to take picture');
-            }
+    const takeXrayImage = async () => {
+        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+        if (!permissionResult.granted) {
+            Alert.alert('Permission Required', 'Please grant camera permissions to take X-ray images.');
+            return;
+        }
+
+        const result = await ImagePicker.launchCameraAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets) {
+            const newImage = result.assets[0].uri;
+            setXrayImages(prev => [...prev, newImage]);
         }
     };
 
-    const processOCR = async (imageUri: string) => {
-        setIsProcessing(true);
-        setExtractedText([]);
+    const pickXrayFromGallery = async () => {
+        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permissionResult.granted) {
+            Alert.alert('Permission Required', 'Please grant camera roll permissions to upload X-ray images.');
+            return;
+        }
 
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsMultipleSelection: true,
+            quality: 0.8,
+        });
+
+        if (!result.canceled && result.assets) {
+            const newImages = result.assets.map(asset => asset.uri);
+            setXrayImages(prev => [...prev, ...newImages]);
+        }
+    };
+
+    const removeXrayImage = (index: number) => {
+        setXrayImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Function to upload image to API
+    const uploadImage = async (imageUri: string): Promise<string | null> => {
         try {
-            if (!isSupported) {
-                Alert.alert('Not Supported', 'OCR is not supported on this device');
-                return;
+            // Check if session exists
+            if (!session) {
+                throw new Error('No authentication token available');
             }
 
-            const result = await extractTextFromImage(imageUri);
-            setExtractedText(result);
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('image', {
+                uri: imageUri,
+                type: 'image/jpeg',
+                name: `awb_${Date.now()}.jpg`,
+            } as any);
 
-            if (result.length === 0) {
-                Alert.alert('No Text Found', 'No text was detected in the image');
+            // Upload image to the API with authorization
+            const response = await fetch('https://dev-app.paratekno.com/api/xray/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    'Authorization': `Bearer ${session}`,
+                },
+                body: formData,
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+            }
+
+            const result = await response.json();
+
+            // Check if the response contains image_path
+            if (!result.image_path) {
+                console.error('Upload response:', result);
+                throw new Error('No image_path in response');
+            }
+
+            return result.image_path;
+        } catch (error) {
+            console.error('Image upload error:', error);
+            return null;
+        }
+    };
+
+    const takePicture = async () => {
+        if (!cameraRef.current) {
+            Alert.alert('Camera Error', 'Camera is not ready. Please try again.');
+            return;
+        }
+        try {
+            console.log('Taking picture...');
+
+            // Ensure camera is ready
+            if (!permission?.granted) {
+                throw new Error('Camera permission not granted');
+            }
+
+            // Take picture with better configuration
+            const photo = await cameraRef.current.takePictureAsync({
+                quality: 0.9,
+                base64: false,
+                skipProcessing: false,
+                enableAutoStabilization: true,
+                enableAutoRedEye: true,
+            });
+
+            console.log('Photo captured:', photo);
+
+            if (photo?.uri) {
+                setCapturedPhoto(photo.uri);
+                await processOCR(photo.uri);
+            } else {
+                throw new Error('No photo returned from camera');
             }
         } catch (error) {
-            console.error('OCR error:', error);
-            Alert.alert('OCR Error', 'Failed to extract text from image');
-        } finally {
-            setIsProcessing(false);
+            console.error('Camera error:', error);
+
+            let errorMessage = 'Failed to take picture';
+
+            if (error instanceof Error) {
+                if (error.message.includes('permission')) {
+                    errorMessage = 'Camera permission is required. Please check your device settings.';
+                } else if (error.message.includes('not available')) {
+                    errorMessage = 'Camera is not available on this device.';
+                } else if (error.message.includes('busy')) {
+                    errorMessage = 'Camera is busy. Please wait a moment and try again.';
+                } else if (error.message.includes('Permission denied')) {
+                    errorMessage = 'Camera permission denied. Please enable camera access in settings.';
+                } else if (error.message.includes('Camera not ready')) {
+                    errorMessage = 'Camera is still starting up. Please wait and try again.';
+                } else {
+                    errorMessage = `Camera error: ${error.message}`;
+                }
+            }
+
+            Alert.alert('Camera Error', errorMessage, [
+                {
+                    text: 'OK',
+                    style: 'default',
+                },
+                {
+                    text: 'Retry',
+                    style: 'default',
+                    onPress: () => setTimeout(takePicture, 1000),
+                }
+            ]);
         }
     };
+    
 
-    const retakePicture = () => {
+    const processOCR = async (imageUri: string) => {
+    setIsProcessing(true);
+    setExtractedText('');
+
+    try {
+        const result = await extractTextFromImage(imageUri);
+
+        const cleaned = result.map(t =>
+            t
+                .toUpperCase()
+                .replace(/O/g, '0')
+                .replace(/I/g, '1')
+                .replace(/[^A-Z0-9\-]/g, '')
+        );
+
+        const joined = cleaned.join(' ');
+
+        let awb =
+            joined.match(/\b\d{3}-\d{8}\b/)?.[0] ??
+            (() => {
+                const m = joined.match(/\b\d{3}\d{8}\b/);
+                return m ? `${m[0].slice(0, 3)}-${m[0].slice(3)}` : null;
+            })() ??
+            joined.match(/\b\d{8}\b/)?.[0] ??
+            null;
+
+        if (awb) {
+            setExtractedText(awb);
+        } else {
+            setExtractedText('');
+            Alert.alert('AWB Not Found', 'Unable to detect AWB number');
+        }
+
+        console.log('📦 AWB:', awb);
+    } catch (error) {
+        console.error(error);
+        Alert.alert('OCR Error', 'Failed to extract text');
+    } finally {
+        setIsProcessing(false);
+    }
+};
+
+
+     const retakePicture = () => {
         setCapturedPhoto(null);
-        setExtractedText([]);
+        setExtractedText('');
         setCopied(false);
     };
 
+
     const copyToClipboard = async () => {
-        const textToCopy = extractedText.join('\n');
-        await Clipboard.setStringAsync(textToCopy);
+        await Clipboard.setStringAsync(extractedText);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
 
     const handleClose = () => {
         setCapturedPhoto(null);
-        setExtractedText([]);
+        setExtractedText('');
+        setXrayImages([]);
         setCopied(false);
         onClose();
+    };
+
+    const handleDone = async () => {
+      console.log('Handling Done with AWB:', session);
+        // Validate authentication
+        if (!session) {
+            Alert.alert('Authentication Error', 'Please log in to save AWB data');
+            return;
+        }
+
+        // Validate inputs
+        if (!capturedPhoto) {
+            Alert.alert('Error', 'Please capture a photo first');
+            return;
+        }
+
+        if (!extractedText.trim()) {
+            Alert.alert('Error', 'Please enter or confirm the AWB number');
+            return;
+        }
+
+        setIsSaving(true);
+
+        try {
+            // Step 1: Upload the captured photo
+            const imagePath = await uploadImage(capturedPhoto);
+            if (!imagePath) {
+                throw new Error('Failed to upload AWB photo');
+            }
+
+            // Step 2: Create airwaybill record with GraphQL
+            const { data } = await createAirwaybill({
+                variables: {
+                    input: {
+                        airwaybill_number: extractedText.trim(),
+                        photo_airwaybill: imagePath,
+                    },
+                },
+            });
+            console.log('Create airwaybill response:', data);
+
+            if (data?.createAirwaybillXray) {
+                // Success
+                Alert.alert(
+                    'Success',
+                    'AWB has been saved successfully!',
+                    [
+                        {
+                            text: 'OK',
+                            onPress: () => {
+                                if (onCaptureComplete) {
+                                    onCaptureComplete(extractedText.trim(), xrayImages);
+                                }
+                                handleClose();
+                            },
+                        },
+                    ]
+                );
+            } else {
+                throw new Error('Failed to create AWB record - No data returned');
+            }
+        } catch (error) {
+            console.error('Save error:', error);
+            let errorMessage = 'Unable to save AWB. Please try again.';
+
+            if (error instanceof Error) {
+                if (error.message.includes('No authentication token')) {
+                    errorMessage = 'Authentication required. Please log in again.';
+                } else if (error.message.includes('Upload failed')) {
+                    errorMessage = 'Failed to upload image. Please check your connection and try again.';
+                } else if (error.message.includes('Failed to create AWB record')) {
+                    errorMessage = 'Failed to save AWB data. Please try again.';
+                }
+            }
+
+            Alert.alert(
+                'Save Failed',
+                errorMessage,
+                [
+                    {
+                        text: 'Cancel',
+                        style: 'cancel',
+                    },
+                    {
+                        text: 'Retry',
+                        onPress: handleDone,
+                    },
+                ]
+            );
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     if (!visible) return null;
@@ -111,14 +403,14 @@ const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
             <View style={styles.modalContent}>
                 {/* Permission not granted yet */}
                 {!permission && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
                         <ActivityIndicator size="large" color={COLORS.primary} />
                     </SafeAreaView>
                 )}
 
                 {/* Request permission */}
                 {permission && !permission.granted && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
                         <View style={styles.permissionContainer}>
                             <CameraIcon width={64} height={64} color={COLORS.gray} />
                             <Text style={styles.permissionTitle}>Camera Permission Required</Text>
@@ -132,7 +424,7 @@ const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
                     </SafeAreaView>
                 )}
 
-                {/* Camera View */}
+               {/* Camera View */}
                 {permission && permission.granted && !capturedPhoto && (
                     <SafeAreaView style={styles.container}>
                         <CameraView style={styles.camera} facing={facing} flash={flash} ref={cameraRef}>
@@ -180,9 +472,10 @@ const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
                     </SafeAreaView>
                 )}
 
+
                 {/* Preview with OCR Results */}
                 {capturedPhoto && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
                         <View style={styles.previewContainer}>
                             <View style={styles.previewHeader}>
                                 <Text style={styles.previewTitle}>OCR Result</Text>
@@ -196,53 +489,93 @@ const OCRCameraModal = ({ visible, onClose }: OCRCameraModalProps) => {
                             <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
                         </View>
 
-                        {/* OCR Results */}
-                        <View style={styles.ocrResultsContainer}>
-                            <View style={styles.ocrHeader}>
-                                <Text style={styles.ocrHeaderText}>Extracted Text</Text>
-                                {extractedText.length > 0 && (
-                                    <TouchableOpacity onPress={copyToClipboard} style={styles.copyButton}>
-                                        {copied ? (
-                                            <Check stroke={COLORS.success} width={20} height={20} />
-                                        ) : (
-                                            <Copy stroke={COLORS.primary} width={20} height={20} />
-                                        )}
-                                        <Text style={[styles.copyButtonText, copied && styles.copiedText]}>
-                                            {copied ? 'Copied!' : 'Copy'}
-                                        </Text>
-                                    </TouchableOpacity>
+                        <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
+                            {/* AWB Number Form */}
+                            <View style={styles.formContainer}>
+                                <Text style={styles.formLabel}>AWB Number</Text>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={extractedText}
+                                        onChangeText={setExtractedText}
+                                        placeholder="Enter AWB number"
+                                        placeholderTextColor={COLORS.textSecondary}
+                                        editable={!isProcessing}
+                                    />
+                                    {extractedText && (
+                                        <TouchableOpacity onPress={copyToClipboard} style={styles.copyButton}>
+                                            {copied ? (
+                                                <Check stroke={COLORS.success} width={20} height={20} />
+                                            ) : (
+                                                <Copy stroke={COLORS.primary} width={20} height={20} />
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                                {isProcessing && (
+                                    <View style={styles.processingContainer}>
+                                        <ActivityIndicator size="small" color={COLORS.primary} />
+                                        <Text style={styles.processingText}>Extracting text...</Text>
+                                    </View>
                                 )}
                             </View>
 
-                            {isProcessing ? (
-                                <View style={styles.processingContainer}>
-                                    <ActivityIndicator size="large" color={COLORS.primary} />
-                                    <Text style={styles.processingText}>Extracting text...</Text>
-                                </View>
-                            ) : (
-                                <ScrollView style={styles.ocrTextScroll}>
-                                    {extractedText.length > 0 ? (
-                                        <Text style={styles.ocrText}>{extractedText.join('\n')}</Text>
-                                    ) : (
-                                        <Text style={styles.noTextMessage}>No text detected</Text>
-                                    )}
-                                </ScrollView>
-                            )}
-                        </View>
+                            {/* X-ray Images Upload */}
+                            <View style={styles.uploadContainer}>
+                                <Text style={styles.formLabel}>X-ray Image</Text>
+                                <TouchableOpacity onPress={pickXrayImages} style={styles.uploadButton}>
+                                    <Plus stroke={COLORS.primary} width={24} height={24} />
+                                    <Text style={styles.uploadButtonText}>Add X-ray Images</Text>
+                                </TouchableOpacity>
 
-                        <View style={styles.previewActions}>
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.retakeButton]}
-                                onPress={retakePicture}
-                            >
-                                <Text style={styles.retakeButtonText}>Retake</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.actionButton, styles.doneButton]}
-                                onPress={handleClose}
-                            >
-                                <Text style={styles.doneButtonText}>Done</Text>
-                            </TouchableOpacity>
+                                {xrayImages.length > 0 && (
+                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
+                                        {xrayImages.map((uri, index) => (
+                                            <View key={index} style={styles.imagePreviewContainer}>
+                                                <Image source={{ uri }} style={styles.xrayImagePreview} />
+                                                <TouchableOpacity
+                                                    onPress={() => removeXrayImage(index)}
+                                                    style={styles.removeImageButton}
+                                                >
+                                                    <X stroke={COLORS.white} width={16} height={16} />
+                                                </TouchableOpacity>
+                                            </View>
+                                        ))}
+                                    </ScrollView>
+                                )}
+                            </View>
+                        </ScrollView>
+
+                        {/* Fixed Bottom Actions */}
+                        <View style={styles.bottomActionsContainer}>
+                            <View style={styles.previewActions}>
+                                <TouchableOpacity
+                                    style={[styles.actionButton, styles.retakeButton]}
+                                    onPress={retakePicture}
+                                >
+                                    <Text style={styles.retakeButtonText}>Retake</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.actionButton,
+                                        styles.doneButton,
+                                        isSaving && styles.disabledButton
+                                    ]}
+                                    onPress={handleDone}
+                                    disabled={isSaving || isProcessing}
+                                >
+                                    {isSaving ? (
+                                        <View style={styles.loadingContainer}>
+                                            <ActivityIndicator size="small" color={COLORS.white} />
+                                            <Text style={[styles.doneButtonText, { marginLeft: 8 }]}>
+                                                Saving...
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.doneButtonText}>Done</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
                         </View>
                     </SafeAreaView>
                 )}
@@ -320,12 +653,15 @@ const styles = StyleSheet.create({
         paddingVertical: SPACING.m,
     },
     iconButton: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
         backgroundColor: 'rgba(0,0,0,0.5)',
         alignItems: 'center',
         justifyContent: 'center',
+        // Larger hit area without changing visual size
+        padding: 8,
+        margin: -8,
     },
     ocrBadge: {
         backgroundColor: 'rgba(2, 132, 199, 0.9)',
@@ -340,6 +676,9 @@ const styles = StyleSheet.create({
     },
     flipButton: {
         backgroundColor: 'rgba(0,0,0,0.5)',
+        // Larger hit area without changing visual size
+        padding: 8,
+        margin: -8,
     },
     placeholderButton: {
         backgroundColor: 'transparent',
@@ -395,12 +734,17 @@ const styles = StyleSheet.create({
         paddingBottom: SPACING.xl + SPACING.m,
     },
     captureButton: {
-        width: 80,
-        height: 80,
-        borderRadius: 40,
+        width: 96,
+        height: 96,
+        borderRadius: 48,
         backgroundColor: 'rgba(255,255,255,0.3)',
         alignItems: 'center',
         justifyContent: 'center',
+        // Larger hit area without changing visual size
+        padding: 8,
+        margin: -8,
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     captureInner: {
         width: 68,
@@ -490,13 +834,20 @@ const styles = StyleSheet.create({
         textAlign: 'center',
         marginTop: SPACING.l,
     },
-    previewActions: {
-        flexDirection: 'row',
-        gap: SPACING.m,
+    contentScroll: {
+        flex: 1,
+    },
+    bottomActionsContainer: {
+        backgroundColor: COLORS.background,
+        borderTopWidth: 1,
+        borderTopColor: COLORS.border,
         paddingHorizontal: SPACING.l,
         paddingVertical: SPACING.m,
         paddingBottom: SPACING.m + SPACING.l,
-        backgroundColor: COLORS.background,
+    },
+    previewActions: {
+        flexDirection: 'row',
+        gap: SPACING.m,
     },
     actionButton: {
         flex: 1,
@@ -521,6 +872,90 @@ const styles = StyleSheet.create({
         color: COLORS.white,
         fontSize: 16,
         fontWeight: '600',
+    },
+    // Form styles
+    formContainer: {
+        backgroundColor: COLORS.background,
+        padding: SPACING.m,
+        marginBottom: SPACING.s,
+    },
+    formLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: COLORS.text,
+        marginBottom: SPACING.s,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: COLORS.white,
+        borderRadius: SPACING.m,
+        borderWidth: 1,
+        borderColor: COLORS.border,
+        paddingHorizontal: SPACING.m,
+    },
+    textInput: {
+        flex: 1,
+        fontSize: 16,
+        color: COLORS.text,
+        paddingVertical: SPACING.m,
+    },
+    // Upload styles
+    uploadContainer: {
+        backgroundColor: COLORS.background,
+        padding: SPACING.m,
+        paddingBottom: SPACING.xl,
+    },
+    uploadButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: COLORS.white,
+        borderRadius: SPACING.m,
+        borderWidth: 2,
+        borderColor: COLORS.primary,
+        borderStyle: 'dashed',
+        paddingVertical: SPACING.l,
+        gap: SPACING.s,
+    },
+    uploadButtonText: {
+        fontSize: 16,
+        color: COLORS.primary,
+        fontWeight: '600',
+    },
+    imageScroll: {
+        paddingTop: SPACING.xl,
+        paddingBottom: SPACING.l,
+    },
+    imagePreviewContainer: {
+        marginRight: SPACING.m,
+        position: 'relative',
+    },
+    xrayImagePreview: {
+        width: 80,
+        height: 80,
+        borderRadius: SPACING.s,
+        backgroundColor: COLORS.gray,
+    },
+    removeImageButton: {
+        position: 'absolute',
+        top: -8,
+        right: -8,
+        backgroundColor: COLORS.error,
+        borderRadius: 12,
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    disabledButton: {
+        backgroundColor: COLORS.gray,
+        opacity: 0.7,
+    },
+    loadingContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
 });
 
