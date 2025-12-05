@@ -69,7 +69,6 @@ function RootLayoutNav() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="(auth)/login" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="add-camera" options={{ headerShown: false }} />
           <Stack.Screen name="detail/[id]" options={{ headerShown: false }} />
         </Stack>
         <StatusBar style="auto" />
