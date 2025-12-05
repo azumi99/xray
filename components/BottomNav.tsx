@@ -2,13 +2,14 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Box, HStack } from '@gluestack-ui/themed';
-import { PackageIcon, UserIcon, PlusIcon } from 'lucide-react-native';
+import { PackageIcon, UserIcon, PlusIcon, ScanText } from 'lucide-react-native';
 
 interface BottomNavProps {
   onAddPress?: () => void;
+  onOcrPress?: () => void;
 }
 
-const BottomNav = ({ onAddPress }: BottomNavProps) => {
+const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('list');
 
@@ -21,8 +22,15 @@ const BottomNav = ({ onAddPress }: BottomNavProps) => {
     if (onAddPress) {
       onAddPress();
     } else {
-      // Fallback untuk screens yang tidak menggunakan modal
       console.log('Add button pressed');
+    }
+  };
+
+  const handleOcrPress = () => {
+    if (onOcrPress) {
+      onOcrPress();
+    } else {
+      console.log('OCR button pressed');
     }
   };
 
@@ -34,15 +42,19 @@ const BottomNav = ({ onAddPress }: BottomNavProps) => {
       right="5%"
       borderRadius="$2xl"
       bg="rgba(255, 255, 255, 0.98)"
-      shadow="$4"
       style={{
         backdropFilter: 'blur(15px)',
         borderWidth: 1,
         borderColor: 'rgba(255, 255, 255, 0.4)',
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
       }}
       py="$3"
     >
-      <HStack alignItems="center" justifyContent="space-around" px="$4">
+      <HStack alignItems="center" justifyContent="space-between" px="$6">
         {/* List Tab */}
         <TouchableOpacity
           onPress={() => handleTabPress('list', '/(tabs)/list')}
@@ -69,23 +81,34 @@ const BottomNav = ({ onAddPress }: BottomNavProps) => {
           </Text>
         </TouchableOpacity>
 
-        {/* Add Button - Centered and raised */}
+        {/* OCR Tab */}
         <TouchableOpacity
-          onPress={handleAddPress}
-          activeOpacity={0.8}
-          style={styles.addButtonContainer}
+          onPress={handleOcrPress}
+          style={[styles.tabItem]}
         >
           <Box
-            bg="#0284C7"
-            p="$4"
+            bg={activeTab === 'ocr' ? 'rgba(2, 132, 199, 0.1)' : 'transparent'}
+            p="$2"
             borderRadius="$full"
-            style={styles.addButton}
-            borderWidth={3}
-            borderColor="white"
+            mb="$1"
           >
-            <PlusIcon size={28} color="white" strokeWidth={3} />
+            <ScanText
+              size={20}
+              color={activeTab === 'ocr' ? '#0284C7' : '#6B7280'}
+            />
           </Box>
+          <Text
+            style={[
+              styles.tabText,
+              activeTab === 'ocr' && styles.activeTabText
+            ]}
+          >
+            OCR
+          </Text>
         </TouchableOpacity>
+
+        {/* Spacer for Add Button */}
+        <View style={{ width: 60 }} />
 
         {/* Profile Tab */}
         <TouchableOpacity
@@ -113,6 +136,24 @@ const BottomNav = ({ onAddPress }: BottomNavProps) => {
           </Text>
         </TouchableOpacity>
       </HStack>
+
+      {/* Add Button - Centered and raised */}
+      <TouchableOpacity
+        onPress={handleAddPress}
+        activeOpacity={0.8}
+        style={styles.addButtonContainer}
+      >
+        <Box
+          bg="#0284C7"
+          p="$4"
+          borderRadius="$full"
+          style={styles.addButton}
+          borderWidth={3}
+          borderColor="white"
+        >
+          <PlusIcon size={28} color="white" strokeWidth={3} />
+        </Box>
+      </TouchableOpacity>
     </Box>
   );
 };
@@ -120,7 +161,7 @@ const BottomNav = ({ onAddPress }: BottomNavProps) => {
 const styles = StyleSheet.create({
   tabItem: {
     alignItems: 'center',
-    flex: 1,
+    minWidth: 60,
   },
   tabText: {
     fontSize: 12,
