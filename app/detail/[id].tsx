@@ -5,27 +5,70 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { CameraIcon, ImageIcon, PlusIcon, PackageIcon, MapPinIcon, UserIcon, CalendarIcon } from 'lucide-react-native';
 import { launchCameraAsync, MediaTypeOptions, requestCameraPermissionsAsync } from 'expo-image-picker';
 import PhotoItem from '@/components/PhotoItem';
-import { mockAwbDetail } from '@/mocks/awbList';
+import { useQuery, gql } from '@apollo/client';
+import { useAuth } from '@/lib/store/auth';
+
+// GraphQL query for AWB detail
+const GET_AWB_DETAIL = gql`
+  query GetAwbDetail($id: ID!) {
+    airwaybillXrayDetail(id: $id) {
+      id
+      airwaybill_number
+      photo_airwaybill
+      xray_photos {
+        id
+        photo_url
+        created_at
+      }
+      created_at
+      updated_at
+    }
+  }
+`;
 
 const DetailScreen = () => {
   const params = useLocalSearchParams();
   const { id } = params;
+  const { session } = useAuth();
   const [awbNumber, setAwbNumber] = useState('');
-  const [photoAirwaybill, setPhotoAirwaybill] = useState<string | null>(null); // Airwaybill photo
-  const [xrayPhotos, setXrayPhotos] = useState<string[]>([]); // Multiple X-ray photos
+  const [photoAirwaybill, setPhotoAirwaybill] = useState<string | null>(null);
+  const [xrayPhotos, setXrayPhotos] = useState<string[]>([]);
   const [initialPhoto, setInitialPhoto] = useState<string | null>(null);
   const [ocrResult, setOcrResult] = useState<any>(null);
 
+  // GraphQL query for AWB detail
+  const {
+    data,
+    loading: graphQLLoading,
+    error,
+  } = useQuery(GET_AWB_DETAIL, {
+    variables: { id },
+    skip: !session || id === 'new',
+    fetchPolicy: 'network-only',
+  });
+
   useEffect(() => {
+    // Load AWB data from GraphQL response
+    if (data?.airwaybillXrayDetail && id !== 'new') {
+      const awb = data.airwaybillXrayDetail;
+      setAwbNumber(awb.airwaybill_number || '');
+      setPhotoAirwaybill(awb.photo_airwaybill || null);
+
+      // Extract photo URLs from xray_photos array
+      if (awb.xray_photos && Array.isArray(awb.xray_photos)) {
+        const photoUrls = awb.xray_photos.map((photo: any) => photo.photo_url).filter(Boolean);
+        setXrayPhotos(photoUrls);
+      }
+    }
+
     // Load initial photo from params if provided
     const initialPhotoParam = params.initialPhoto as string | undefined;
     if (initialPhotoParam) {
       setInitialPhoto(initialPhotoParam);
-      // Set as photoAirwaybill if this is the primary airwaybill photo
       setPhotoAirwaybill(initialPhotoParam);
-
-      // Initialize xrayPhotos with the captured photo
-      setXrayPhotos([initialPhotoParam]);
+      if (!xrayPhotos.includes(initialPhotoParam)) {
+        setXrayPhotos(prev => [initialPhotoParam, ...prev]);
+      }
     }
 
     // Handle OCR result if provided
@@ -35,12 +78,10 @@ const DetailScreen = () => {
         const parsedOcrResult = JSON.parse(ocrResultParam);
         setOcrResult(parsedOcrResult);
 
-        // Auto-fill AWB number if OCR was successful
         if (parsedOcrResult?.data?.awb_numbers && parsedOcrResult.data.awb_numbers.length > 0) {
           const detectedAwbNumber = parsedOcrResult.data.awb_numbers[0];
           setAwbNumber(detectedAwbNumber);
 
-          // Show success alert
           setTimeout(() => {
             Alert.alert(
               '✅ AWB Detected',
@@ -53,15 +94,7 @@ const DetailScreen = () => {
         console.error('Error parsing OCR result:', error);
       }
     }
-
-    // Load AWB detail (in real app, this would come from API)
-    if (id !== 'new') {
-      setAwbNumber(mockAwbDetail.awbNumber);
-      // Set photos based on the new structure
-      setPhotoAirwaybill(mockAwbDetail.photoAirwaybill || null);
-      setXrayPhotos(mockAwbDetail.xrayPhotos || []);
-    }
-  }, [id, params.initialPhoto, params.ocrResult]);
+  }, [data, id, params.initialPhoto, params.ocrResult]);
 
   const handleDeletePhoto = (photoType: 'photoAirwaybill' | 'xrayPhotos', index?: number) => {
     // Delete the specified photo type
@@ -169,6 +202,68 @@ const DetailScreen = () => {
       </Badge>
     );
   };
+
+  // Loading state
+  if (graphQLLoading && id !== 'new') {
+    return (
+      <LinearGradient
+        colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+        style={{ flex: 1 }}
+      >
+        <SafeAreaView style={{ flex: 1 }}>
+          <VStack flex={1} alignItems="center" justifyContent="center">
+            <Box
+              w="$16"
+              h="$16"
+              borderRadius="$xl"
+              bg="rgba(2, 132, 199, 0.1)"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <PackageIcon size={40} color="#0284C7" />
+            </Box>
+            <Text mt="$4" color="$text500" fontSize="$lg">
+              Loading AWB Detail...
+            </Text>
+          </VStack>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
+
+  // Error state
+  if (error && id !== 'new') {
+    return (
+      <LinearGradient
+        colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+        style={{ flex: 1 }}
+      >
+        <SafeAreaView style={{ flex: 1 }}>
+          <VStack flex={1} alignItems="center" justifyContent="center" p="$4">
+            <Box
+              w="$16"
+              h="$16"
+              borderRadius="$xl"
+              bg="rgba(239, 68, 68, 0.1)"
+              alignItems="center"
+              justifyContent="center"
+            >
+              <PackageIcon size={40} color="#EF4444" />
+            </Box>
+            <Text mt="$4" color="$text500" fontSize="$lg" textAlign="center">
+              Error loading AWB detail
+            </Text>
+            <Text mt="$2" color="$text400" fontSize="$sm" textAlign="center">
+              {error.message}
+            </Text>
+            <Button onPress={() => router.back()} style={{ marginTop: 20 }}>
+              <Text color="white">Go Back</Text>
+            </Button>
+          </VStack>
+        </SafeAreaView>
+      </LinearGradient>
+    );
+  }
 
   return (
     <LinearGradient

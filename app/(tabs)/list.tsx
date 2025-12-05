@@ -54,6 +54,7 @@ const GET_AWB_LIST = gql`
   }
 `;
 
+
 const ListScreen = () => {
   const [filteredAwbList, setFilteredAwbList] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -363,9 +364,6 @@ const ListScreen = () => {
                     onPress={() => handleItemPress(item.id)}
                     index={index}
                     status="Pending"
-                    customerName="N/A"
-                    origin="Origin"
-                    destination="Destination"
                   />
                 ))}
               </VStack>

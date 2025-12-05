@@ -1,19 +1,34 @@
 # AWB Queries
 
 query GetAwbList {
-  awbs {
-    id
-    awbNumber
-    photoAirwaybill
-    xrayPhotos
+  airwaybillXrays(first: 50, page: 1) {
+    data {
+      id
+      airwaybill_number
+      photo_airwaybill
+      created_at
+      updated_at
+      xray_photos_count
+    }
+    paginatorInfo {
+      currentPage
+      lastPage
+      total
+    }
   }
 }
 
 query GetAwb($id: ID!) {
-  awb(id: $id) {
+  airwaybillXrayDetail(id: $id) {
     id
-    awbNumber
-    photoAirwaybill
-    xrayPhotos
+    airwaybill_number
+    photo_airwaybill
+    xray_photos {
+      id
+      photo_url
+      created_at
+    }
+    created_at
+    updated_at
   }
 }

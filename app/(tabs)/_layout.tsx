@@ -7,6 +7,16 @@ import BottomNav from '@/components/BottomNav';
 import CameraModal from '@/components/CameraModal';
 
 const TabLayout = () => {
+  const [showCameraModal, setShowCameraModal] = useState(false);
+
+  const handleAddPress = () => {
+    setShowCameraModal(true);
+  };
+
+  const handleCloseCamera = () => {
+    setShowCameraModal(false);
+  };
+
   return (
     <>
       <Tabs

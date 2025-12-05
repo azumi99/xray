@@ -20,9 +20,6 @@ const AwbListItem = ({
   onPress,
   index = 0,
   status = 'new',
-  customerName = 'Customer Name',
-  origin = 'Origin City',
-  destination = 'Destination City'
 }: AwbListItemProps) => {
   const getStatusConfig = () => {
     switch (status) {
@@ -81,21 +78,6 @@ const AwbListItem = ({
             </HStack>
 
             {/* Additional information */}
-            <View style={{ marginBottom: 8 }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4, marginTop: 10 }}>
-                <UserIcon size={12} color="#6B7280" />
-                <Text style={{ fontSize: 12, color: '#111827', marginLeft: 6 }}>
-                  {customerName}
-                </Text>
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <MapPinIcon size={12} color="#6B7280" />
-                <Text style={{ fontSize: 12, color: '#111827', marginLeft: 6 }}>
-                  {origin} → {destination}
-                </Text>
-              </View>
-            </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <CalendarIcon size={12} color="#9CA3AF" />
