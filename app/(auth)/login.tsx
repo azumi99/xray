@@ -31,7 +31,8 @@ const LoginScreen = () => {
       if (response && response.token) {
         const userData = {
           name: response.user?.name || '',
-          id: response.user?.id || ''
+          id: response.user?.id || '',
+          email: response.user?.email || '',
         };
 
         login(response.token, userData);

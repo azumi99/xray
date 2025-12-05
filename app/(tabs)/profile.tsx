@@ -5,11 +5,16 @@ import { UserIcon, ShieldIcon, LogOutIcon, KeyIcon, SettingsIcon, HelpCircleIcon
 import { useRouter } from 'expo-router';
 import { sessionStorage } from '@/services/storage';
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
+import { useAuth } from '../../lib/store/auth';
 
 const ProfileScreen = () => {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const router = useRouter();
+  const {user} = useAuth();
+
+  console.log("user", user);
+  
 
   const handleLogout = async () => {
     Alert.alert(
