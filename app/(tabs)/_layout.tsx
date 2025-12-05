@@ -5,9 +5,11 @@ import { useAuth } from '@/lib/store/auth';
 import { router } from 'expo-router';
 import BottomNav from '@/components/BottomNav';
 import CameraModal from '@/components/CameraModal';
+import OCRCameraModal from '@/components/OCRCameraModal';
 
 const TabLayout = () => {
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showOCRModal, setShowOCRModal] = useState(false);
 
   const handleAddPress = () => {
     setShowCameraModal(true);
@@ -15,6 +17,14 @@ const TabLayout = () => {
 
   const handleCloseCamera = () => {
     setShowCameraModal(false);
+  };
+
+  const handleOcrPress = () => {
+    setShowOCRModal(true);
+  };
+
+  const handleCloseOCR = () => {
+    setShowOCRModal(false);
   };
 
   return (
@@ -40,12 +50,21 @@ const TabLayout = () => {
           }}
         />
       </Tabs>
-      <BottomNav onAddPress={handleAddPress} />
+      <BottomNav onAddPress={handleAddPress} onOcrPress={handleOcrPress} />
 
       {/* Camera Modal */}
       <CameraModal
-        visible={showCameraModal}
-        onClose={handleCloseCamera}
+        // visible={showCameraModal}
+        // onClose={handleCloseCamera}
+
+        visible={showOCRModal}
+        onClose={handleCloseOCR}
+      />
+
+      {/* OCR Camera Modal */}
+      <OCRCameraModal
+        visible={showOCRModal}
+        onClose={handleCloseOCR}
       />
     </>
   );
