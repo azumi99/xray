@@ -1,32 +1,51 @@
 import React, { useState } from 'react';
-import { View, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
+import { SafeAreaView, TouchableOpacity, Alert } from 'react-native';
 import { VStack, Input, InputField, Button, Box, HStack, FormControl, FormControlLabel, FormControlLabelText, Link, Text } from '@gluestack-ui/themed';
 import { useRouter } from 'expo-router';
-import { UserIcon, LockIcon, EyeIcon, EyeOffIcon } from 'lucide-react-native';
+import { UserIcon, EyeIcon, EyeOffIcon } from 'lucide-react-native';
 import { useAuth } from '@/lib/store/auth';
+import { login as apiLogin } from '@/lib/api/authAPI';
 
 const LoginScreen = () => {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
 
   const handleLogin = async () => {
-    // In a real app, you would make an API call here
-    // For now, simulate login success
-    try {
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // This is a mock login - in a real app, you'd validate credentials
-      // and receive a session token from your backend
-      login('mock-session-token', { name: username, id: 1 });
+    if (!email || !password) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
 
-      // For this demo, we'll just navigate to the main app
-      router.replace('/(tabs)/list');
+    setIsLoading(true);
+    try {
+      const response = await apiLogin({ email, password });
+
+      console.log('Login response:', response); // Debug log
+
+      // Store the token and user data in the auth state
+      // Safely access response properties
+      if (response && response.token) {
+        const userData = {
+          name: response.user?.name || '',
+          id: response.user?.id || ''
+        };
+
+        login(response.token, userData);
+
+        // Navigate to the main app
+        router.replace('/(tabs)/list');
+      } else {
+        throw new Error('Invalid login response format');
+      }
     } catch (error) {
-      Alert.alert('Login Failed', 'Invalid credentials. Please try again.');
+      console.error('Login error:', error);
+      Alert.alert('Login Failed', error instanceof Error ? error.message : 'An error occurred during login');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -68,8 +87,8 @@ const LoginScreen = () => {
             >
               <InputField
                 placeholder="Enter your email"
-                value={username}
-                onChangeText={setUsername}
+                value={email}
+                onChangeText={setEmail}
                 color="$text0"
                 autoCapitalize="none"
                 keyboardType="email-address"

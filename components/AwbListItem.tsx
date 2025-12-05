@@ -14,11 +14,11 @@ interface AwbListItemProps {
   destination?: string;
 }
 
-const AwbListItem = ({ 
-  awbNumber, 
-  date, 
-  onPress, 
-  index = 0, 
+const AwbListItem = ({
+  awbNumber,
+  date,
+  onPress,
+  index = 0,
   status = 'new',
   customerName = 'Customer Name',
   origin = 'Origin City',
@@ -88,7 +88,7 @@ const AwbListItem = ({
                   {customerName}
                 </Text>
               </View>
-              
+
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <MapPinIcon size={12} color="#6B7280" />
                 <Text style={{ fontSize: 12, color: '#111827', marginLeft: 6 }}>

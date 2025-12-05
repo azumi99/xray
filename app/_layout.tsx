@@ -15,6 +15,8 @@ import {
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
+import { ApolloProvider } from "@apollo/client";
+import client from "@/graphql/client";
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -32,7 +34,9 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <RootLayoutNav />
+      <ApolloProvider client={client}>
+        <RootLayoutNav />
+      </ApolloProvider>
     </AuthProvider>
   );
 }

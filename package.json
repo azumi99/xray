@@ -26,6 +26,7 @@
     "apollo-upload-client": "^18.0.1",
     "axios": "^1.13.1",
     "dayjs": "^1.11.19",
+    "dotenv": "^17.2.3",
     "expo": "~54.0.25",
     "expo-camera": "^17.0.9",
     "expo-constants": "~18.0.10",

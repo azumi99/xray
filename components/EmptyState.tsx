@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Box, VStack, LinearGradient } from '@gluestack-ui/themed';
+import { Box, VStack, HStack, LinearGradient } from '@gluestack-ui/themed';
 import { PackageSearchIcon, SearchIcon, PackageIcon, LucideIcon } from 'lucide-react-native';
 
 interface EmptyStateProps {
@@ -60,7 +60,7 @@ const EmptyState = ({ title, subtitle, icon = PackageSearchIcon }: EmptyStatePro
       </VStack>
 
       {/* Decorative Elements */}
-      <HStack space="$2" mt="$6" opacity={0.6}>
+      <HStack space="sm" mt="$6" opacity={0.6}>
         <Box w="$2" h="$2" borderRadius="$full" bg="$primary300" />
         <Box w="$2" h="$2" borderRadius="$full" bg="$primary400" />
         <Box w="$2" h="$2" borderRadius="$full" bg="$primary600" />

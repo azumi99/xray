@@ -159,10 +159,10 @@ const DetailScreen = () => {
             </VStack>
 
             {/* Content Card */}
-            <Box 
-              bg="$white" 
-              borderRadius="$2xl" 
-              p="lg" 
+            <Box
+              bg="$white"
+              borderRadius="$2xl"
+              p="lg"
               shadowColor="$backgroundLight500"
               shadowOffset={{ width: 0, height: 4 }}
               shadowOpacity={0.1}
