@@ -83,6 +83,7 @@ class OCRService {
             if (result?.data?.extracted_text) {
                 const awbPattern = /\b\d{10,12}\b/g;
                 const matches = result.data.extracted_text.match(awbPattern);
+                console.log('🔍 Extracted Text Matches:', matches);
 
                 if (matches?.[0]) {
                     return {

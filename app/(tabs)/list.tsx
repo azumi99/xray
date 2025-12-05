@@ -1,42 +1,43 @@
-import React, { useRef, useState, useEffect } from 'react';
+import AwbListItem from '@/components/AwbListItem';
+import EmptyState from '@/components/EmptyState';
+import StatusBarSafeArea from '@/components/StatusBarSafeArea';
+import { useAuth } from '@/lib/store/auth';
+import { formatDateTime } from '@/utils/formatDate';
+import { gql, useQuery } from '@apollo/client';
 import {
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
-} from 'react-native';
-import {
-  VStack,
+  Badge,
+  Box,
+  HStack,
   Input,
   InputField,
   InputIcon,
   InputSlot,
-  Box,
-  Badge,
   Text,
-  HStack,
+  VStack,
 } from '@gluestack-ui/themed';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
 import {
-  SearchIcon,
-  PackageIcon,
+  ArrowUpIcon,
   CalendarIcon,
   FilterIcon,
-  ArrowUpIcon,
+  PackageIcon,
+  SearchIcon,
 } from 'lucide-react-native';
-import AwbListItem from '@/components/AwbListItem';
-import EmptyState from '@/components/EmptyState';
-import { formatDateTime } from '@/utils/formatDate';
-import StatusBarSafeArea from '@/components/StatusBarSafeArea';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useQuery, gql } from '@apollo/client';
-import { useAuth } from '@/lib/store/auth';
-import { router } from 'expo-router';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  RefreshControl,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// GraphQL query
+// GraphQL query - fetch semua data karena backend tidak support orderBy
 const GET_AWB_LIST = gql`
   query GetAwbList {
-    airwaybillXrays(first: 50, page: 1) {
+    airwaybillXrays(first: 100, page: 1) {
       data {
         id
         airwaybill_number
@@ -54,16 +55,20 @@ const GET_AWB_LIST = gql`
   }
 `;
 
-
 const ListScreen = () => {
-  const [filteredAwbList, setFilteredAwbList] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   const { session, isLoading: authLoading } = useAuth();
+  const insets = useSafeAreaInsets();
 
-  // GraphQL fetch
+  // Calculate dynamic bottom positioning for FAB
+  const bottomNavHeight = 60;
+  const fabMargin = 20;
+  const fabBottomPosition = bottomNavHeight + Math.max(insets.bottom, 16) + fabMargin;
+
+  // GraphQL fetch - gunakan no-cache untuk memastikan data terbaru
   const {
     data,
     loading: graphQLLoading,
@@ -71,34 +76,71 @@ const ListScreen = () => {
     refetch,
   } = useQuery(GET_AWB_LIST, {
     skip: !session,
-    fetchPolicy: 'network-only',
+    fetchPolicy: 'no-cache', // Gunakan no-cache untuk menghindari masalah cache
+    notifyOnNetworkStatusChange: true,
   });
 
+  console.log('GraphQL data:', JSON.stringify(data, null, 1));
+  
   const awbList = data?.airwaybillXrays?.data || [];
 
   const scrollRef = useRef<ScrollView | null>(null);
 
-  // Update filtered list when awbList changes
-  useEffect(() => {
-    setFilteredAwbList(awbList);
-  }, [awbList]);
-
-  // Handle search
-  useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredAwbList(awbList);
-    } else {
+  // Sort dan filter list
+  const filteredAwbList = useMemo(() => {
+    // Filter dulu jika ada search query
+    let list = awbList;
+    
+    if (searchQuery.trim() !== '') {
       const lower = searchQuery.toLowerCase();
-      const filtered = awbList.filter((item: any) =>
-        item.airwaybill_number.toLowerCase().includes(lower),
+      list = awbList.filter((item: any) =>
+        item.airwaybill_number.toLowerCase().includes(lower)
       );
-      setFilteredAwbList(filtered);
     }
-  }, [searchQuery, awbList]);
+
+    // Sort descending (terbaru di atas) - PAKSA SORT di sini
+    const sortedList = [...list].sort((a, b) => {
+      // Parse date strings menjadi timestamp
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      
+      // Debug log untuk memastikan sorting
+      if (list.length <= 3) {
+        console.log('Sort comparison:', {
+          a: a.airwaybill_number,
+          b: b.airwaybill_number,
+          dateA: new Date(a.created_at).toISOString(),
+          dateB: new Date(b.created_at).toISOString(),
+          result: dateB - dateA
+        });
+      }
+      
+      // Descending: terbaru dulu (dateB - dateA)
+      return dateB - dateA;
+    });
+
+    return sortedList;
+  }, [awbList, searchQuery]);
+
+  // Debug log untuk melihat hasil sorting
+  useEffect(() => {
+    if (filteredAwbList.length > 0) {
+      console.log('Filtered AWB List (first 3):', 
+        filteredAwbList.slice(0, 3).map(item => ({
+          number: item.airwaybill_number,
+          created: new Date(item.created_at).toISOString()
+        }))
+      );
+    }
+  }, [filteredAwbList]);
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await refetch();
+    try {
+      await refetch();
+    } catch (err) {
+      console.error('Refetch error:', err);
+    }
     setRefreshing(false);
   };
 
@@ -118,7 +160,7 @@ const ListScreen = () => {
 
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollY = e.nativeEvent.contentOffset.y;
-    setShowScrollTop(scrollY > 300);
+    setShowScrollTop(scrollY > 200);
   };
 
   // Loading state
@@ -195,7 +237,7 @@ const ListScreen = () => {
 
   return (
     <Box flex={1} bg="$background0">
-      {/* Soft background gradient di atas */}
+      {/* Soft background gradient */}
       <LinearGradient
         colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
         start={{ x: 0, y: 0 }}
@@ -315,7 +357,7 @@ const ListScreen = () => {
             ref={scrollRef}
             contentContainerStyle={{
               paddingTop: 12,
-              paddingBottom: 120,
+              paddingBottom: fabBottomPosition + 40,
             }}
             refreshControl={
               <RefreshControl
@@ -346,7 +388,7 @@ const ListScreen = () => {
                   <HStack alignItems="center" space="xs">
                     <CalendarIcon size={12} color="#6B7280" />
                     <Text fontSize="$xs" color="$text400">
-                      Last updated today
+                      Newest first
                     </Text>
                   </HStack>
                 )}
@@ -387,7 +429,12 @@ const ListScreen = () => {
         {showScrollTop && (
           <TouchableOpacity
             onPress={scrollToTop}
-            style={styles.scrollToTopButton}
+            style={[
+              styles.scrollToTopButton,
+              {
+                bottom: fabBottomPosition,
+              }
+            ]}
             activeOpacity={0.8}
           >
             <Box
@@ -414,9 +461,9 @@ const styles = {
   },
   scrollToTopButton: {
     position: 'absolute' as const,
-    bottom: 80,
     right: 20,
     borderRadius: 50,
+    zIndex: 999,
   },
 };
 
