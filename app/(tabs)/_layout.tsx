@@ -1,6 +1,6 @@
 import { Tabs } from 'expo-router';
 import { View } from 'react-native';
-import React, { useState }, { useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/store/auth';
 import { router } from 'expo-router';
 import BottomNav from '@/components/BottomNav';
