@@ -1,9 +1,20 @@
 import { Tabs } from 'expo-router';
 import { View, StyleSheet } from 'react-native';
-import React from 'react';
+import React, { useState } from 'react';
 import BottomNav from '@/components/BottomNav';
+import CameraModal from '@/components/CameraModal';
 
 const TabLayout = () => {
+  const [showCameraModal, setShowCameraModal] = useState(false);
+
+  const handleAddPress = () => {
+    setShowCameraModal(true);
+  };
+
+  const handleCloseCamera = () => {
+    setShowCameraModal(false);
+  };
+
   return (
     <>
       <Tabs
@@ -12,8 +23,6 @@ const TabLayout = () => {
           tabBarStyle: {
             display: 'none', // We'll implement custom tab bar
           },
-          // Apply consistent background
-          cardStyle: { backgroundColor: '#F0F9FF' },
         }}
       >
         <Tabs.Screen
@@ -29,7 +38,13 @@ const TabLayout = () => {
           }}
         />
       </Tabs>
-      <BottomNav />
+      <BottomNav onAddPress={handleAddPress} />
+
+      {/* Camera Modal */}
+      <CameraModal
+        visible={showCameraModal}
+        onClose={handleCloseCamera}
+      />
     </>
   );
 };
