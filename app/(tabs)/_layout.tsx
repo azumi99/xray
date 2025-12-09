@@ -1,11 +1,7 @@
-import { Tabs } from 'expo-router';
-import { View } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/lib/store/auth';
-import { router } from 'expo-router';
 import BottomNav from '@/components/BottomNav';
-import CameraModal from '@/components/CameraModal';
 import OCRCameraModal from '@/components/OCRCameraModal';
+import { Tabs } from 'expo-router';
+import React, { useState } from 'react';
 
 const TabLayout = () => {
   const [showCameraModal, setShowCameraModal] = useState(false);
@@ -53,13 +49,7 @@ const TabLayout = () => {
       <BottomNav onAddPress={handleAddPress} onOcrPress={handleOcrPress} />
 
       {/* Camera Modal */}
-      <CameraModal
-        // visible={showCameraModal}
-        // onClose={handleCloseCamera}
-
-        visible={showOCRModal}
-        onClose={handleCloseOCR}
-      />
+     
 
       {/* OCR Camera Modal */}
       <OCRCameraModal

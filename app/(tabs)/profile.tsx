@@ -1,17 +1,59 @@
-import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Alert, StyleSheet, TextInput } from 'react-native';
-import { useRouter } from 'expo-router';
-import { sessionStorage } from '@/services/storage';
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
-import { useAuth } from '../../lib/store/auth';
-import { LogOut, Key, Settings, HelpCircle, ChevronRight, Package, CheckCircle } from 'lucide-react-native';
+import { gql, useQuery } from '@apollo/client';
+import axios from 'axios';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter } from 'expo-router';
+import { ChevronRight, HelpCircle, Key, LogOut, Settings } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { useAuth } from '../../lib/store/auth';
+
+// GraphQL query untuk AWB statistics
+const GET_AWB_STATS = gql`
+  query GetAwbList {
+    airwaybillXrays(first: 100, page: 1) {
+      data {
+        id
+        airwaybill_number
+        photo_airwaybill
+        created_at
+        updated_at
+        xray_photos_count
+      }
+      paginatorInfo {
+        currentPage
+        lastPage
+        total
+      }
+    }
+  }
+`;
 
 const ProfileScreen = () => {
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
-  const {user} = useAuth();
+  const { session, logout } = useAuth();
+  console.log('User data in ProfileScreen:', session);
+
+  // GraphQL query untuk AWB statistics
+  const {
+    data: awbData,
+    loading: awbLoading,
+    error: awbError,
+  } = useQuery(GET_AWB_STATS, {
+    skip: !session,
+    fetchPolicy: 'no-cache',
+    notifyOnNetworkStatusChange: true,
+  });
+
+  const awbList = awbData?.airwaybillXrays?.data || [];
+  const totalAwb = awbData?.airwaybillXrays?.paginatorInfo?.total || 0;
+
+  // Calculate completed AWBs (yang memiliki xray_photos_count > 0)
+  const completedAwb = awbList.filter((awb: any) => awb.xray_photos_count > 0).length;
 
   // Color palette
   const colors = {
@@ -35,7 +77,8 @@ const ProfileScreen = () => {
           text: 'Logout',
           style: 'destructive',
           onPress: async () => {
-            await sessionStorage.removeSession();
+            // await sessionStorage.removeSession('auth-storage');
+            logout();
             router.replace('/(auth)/login');
           },
         },
@@ -49,14 +92,42 @@ const ProfileScreen = () => {
     setNewPassword('');
   };
 
+  const userData = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${process.env.EXPO_PUBLIC_API_BASE_URL}/check-session`, {
+        headers: {
+          'Authorization': `Bearer ${session}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.data && response.data.user) {
+        setUserInfo(response.data.user);
+        console.log('User data fetched:', response.data.user);
+      }
+    } catch (error) {
+      console.error('Error fetching user data:', error);
+      Alert.alert('Error', 'Failed to load user data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (session) {
+      userData();
+    }
+  }, [session]);
+
   const menuItems = [
     { icon: Settings, label: 'Settings', onPress: () => console.log('Settings') },
     { icon: HelpCircle, label: 'Help & Support', onPress: () => console.log('Help') },
   ];
 
   const stats = [
-    { value: "24", label: "Total AWB" },
-    { value: "18", label: "Completed" },
+    { value: awbLoading ? "..." : totalAwb.toString(), label: "Total AWB" },
+    { value: awbLoading ? "..." : completedAwb.toString(), label: "Completed" },
   ];
 
   return (
@@ -77,13 +148,21 @@ const ProfileScreen = () => {
             {/* Avatar */}
             <View style={styles.avatarContainer}>
               <View style={[styles.avatar, styles.avatarWithGradient]}>
-                <Text style={styles.avatarText}>JD</Text>
+                <Text style={styles.avatarText}>
+                  {loading || !userInfo ? '...' :
+                   userInfo?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+                  }
+                </Text>
               </View>
             </View>
 
             {/* User Info */}
-            <Text style={[styles.userName, styles.userNameGradient]}>John Doe</Text>
-            <Text style={styles.userEmail}>john.doe@example.com</Text>
+            <Text style={[styles.userName, styles.userNameGradient]}>
+              {loading || !userInfo ? 'Loading...' : userInfo?.name || 'Unknown User'}
+            </Text>
+            <Text style={styles.userEmail}>
+              {loading || !userInfo ? 'Loading...' : userInfo?.email || 'No email'}
+            </Text>
 
             {/* Stats */}
             <View style={styles.statsContainer}>
