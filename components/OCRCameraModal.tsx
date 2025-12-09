@@ -20,7 +20,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '../lib/store/auth';
 
-// GraphQL mutation for creating airwaybill
+// GraphQL mutation for creating airwaybill (basic version)
 const CREATE_AIRWAYBILL_MUTATION = gql`
   mutation CreateAirwaybillXray($input: CreateAirwaybillXrayInput!) {
     createAirwaybillXray(input: $input) {
@@ -33,6 +33,19 @@ const CREATE_AIRWAYBILL_MUTATION = gql`
     }
   }
 `;
+
+// GraphQL mutation for creating single airwaybill detail
+const CREATE_AIRWAYBILL_DETAIL_MUTATION = gql`
+  mutation CreateAirwaybillXrayDetail($input: CreateAirwaybillXrayDetailInput!) {
+    createAirwaybillXrayDetail(input: $input) {
+      id
+      id_airwaybill
+      xray_photo
+      created_at
+    }
+  }
+`;
+
 
 type OCRCameraModalProps = {
     visible: boolean;
@@ -51,12 +64,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [xrayImages, setXrayImages] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const cameraRef = useRef<CameraView>(null);
+    console.log('OCRCameraModal rendered with visible:', xrayImages);
 
     // Get session data for authorization
     const { session } = useAuth();
 
-    // GraphQL mutation hook
+    // GraphQL mutation hooks
     const [createAirwaybill] = useMutation(CREATE_AIRWAYBILL_MUTATION);
+    const [createAirwaybillDetail] = useMutation(CREATE_AIRWAYBILL_DETAIL_MUTATION);
 
     const toggleFlash = () => {
         setFlash((current) => (current === 'off' ? 'on' : 'off'));
@@ -145,7 +160,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             } as any);
 
             // Upload image to the API with authorization
-            const response = await fetch('https://dev-app.paratekno.com/api/xray/upload', {
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/xray/upload`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'multipart/form-data',
@@ -174,6 +189,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         }
     };
 
+    
     const takePicture = async () => {
         if (!cameraRef.current) {
             Alert.alert('Camera Error', 'Camera is not ready. Please try again.');
@@ -305,7 +321,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     };
 
     const handleDone = async () => {
-      console.log('Handling Done with AWB:', session);
+        console.log('🔄 Handling Done with AWB:', session);
+        console.log('📸 X-ray images to process:', xrayImages.length);
+
         // Validate authentication
         if (!session) {
             Alert.alert('Authentication Error', 'Please log in to save AWB data');
@@ -326,13 +344,17 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         setIsSaving(true);
 
         try {
-            // Step 1: Upload the captured photo
+            // Step 1: Upload the captured AWB photo
+            console.log('📤 Uploading AWB photo...');
             const imagePath = await uploadImage(capturedPhoto);
             if (!imagePath) {
                 throw new Error('Failed to upload AWB photo');
             }
 
-            // Step 2: Create airwaybill record with GraphQL
+            console.log('✅ AWB photo uploaded successfully:', imagePath);
+
+            // Step 2: Create airwaybill record (basic version)
+            console.log('📝 Creating AWB record...');
             const { data } = await createAirwaybill({
                 variables: {
                     input: {
@@ -341,30 +363,96 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                     },
                 },
             });
-            console.log('Create airwaybill response:', data);
+            console.log('✅ Create airwaybill response:', data);
 
-            if (data?.createAirwaybillXray) {
-                // Success
-                Alert.alert(
-                    'Success',
-                    'AWB has been saved successfully!',
-                    [
-                        {
-                            text: 'OK',
-                            onPress: () => {
-                                if (onCaptureComplete) {
-                                    onCaptureComplete(extractedText.trim(), xrayImages);
-                                }
-                                handleClose();
-                            },
-                        },
-                    ]
-                );
-            } else {
+            if (!data?.createAirwaybillXray) {
                 throw new Error('Failed to create AWB record - No data returned');
             }
+
+            const awbId = data.createAirwaybillXray.id;
+            console.log('✅ AWB created successfully with ID:', awbId);
+
+            // Step 3: Upload all x-ray photos
+            let xrayPhotoPaths: string[] = [];
+            if (xrayImages.length > 0) {
+                console.log(`📸 Uploading ${xrayImages.length} x-ray images...`);
+
+                // Upload all x-ray images sequentially
+                for (let i = 0; i < xrayImages.length; i++) {
+                    console.log(`📸 Uploading x-ray image ${i + 1}/${xrayImages.length}`);
+                    const xrayPath = await uploadImage(xrayImages[i]);
+                    if (xrayPath) {
+                        xrayPhotoPaths.push(xrayPath);
+                        console.log(`✅ X-ray image ${i + 1} uploaded:`, xrayPath);
+                    } else {
+                        console.warn(`❌ Failed to upload x-ray image ${i + 1}`);
+                    }
+                }
+                console.log('📸 All x-ray photo paths collected:', xrayPhotoPaths);
+
+                // Step 4: Create airwaybill details for x-ray photos one by one
+                if (xrayPhotoPaths.length > 0) {
+                    console.log(`💾 Creating ${xrayPhotoPaths.length} airwaybill x-ray details...`);
+                    let successCount = 0;
+
+                    for (let i = 0; i < xrayPhotoPaths.length; i++) {
+                        try {
+                            console.log(`💾 Creating detail ${i + 1}/${xrayPhotoPaths.length}:`, xrayPhotoPaths[i]);
+
+                            const { data: detailData, errors: detailErrors } = await createAirwaybillDetail({
+                                variables: {
+                                    input: {
+                                        id_airwaybill: awbId,
+                                        xray_photo: xrayPhotoPaths[i],
+                                    },
+                                },
+                            });
+
+                            if (detailErrors) {
+                                console.error(`❌ Failed to create detail ${i + 1}:`, detailErrors);
+                            } else {
+                                console.log(`✅ Detail ${i + 1} created successfully:`, detailData);
+                                successCount++;
+                            }
+                        } catch (error) {
+                            console.error(`❌ Error creating detail ${i + 1}:`, error);
+                        }
+                    }
+
+                    console.log(`💾 Successfully created ${successCount}/${xrayPhotoPaths.length} airwaybill details`);
+
+                    if (successCount === 0) {
+                        throw new Error('Failed to save any x-ray photos to database');
+                    } else if (successCount < xrayPhotoPaths.length) {
+                        console.warn(`⚠️ Only ${successCount} out of ${xrayPhotoPaths.length} x-ray photos were saved successfully`);
+                    }
+                }
+            }
+
+            // Success message
+            let successMessage = '✅ AWB has been saved successfully!';
+            if (xrayPhotoPaths.length > 0) {
+                successMessage = `✅ AWB and ${xrayPhotoPaths.length} X-ray photos have been saved successfully!`;
+            }
+
+            Alert.alert(
+                'Success',
+                successMessage,
+                [
+                    {
+                        text: 'OK',
+                        onPress: () => {
+                            if (onCaptureComplete) {
+                                onCaptureComplete(extractedText.trim(), xrayImages);
+                            }
+                            handleClose();
+                        },
+                    },
+                ]
+            );
+
         } catch (error) {
-            console.error('Save error:', error);
+            console.error('❌ Save error:', error);
             let errorMessage = 'Unable to save AWB. Please try again.';
 
             if (error instanceof Error) {
@@ -374,6 +462,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                     errorMessage = 'Failed to upload image. Please check your connection and try again.';
                 } else if (error.message.includes('Failed to create AWB record')) {
                     errorMessage = 'Failed to save AWB data. Please try again.';
+                } else if (error.message.includes('ApolloError')) {
+                    errorMessage = 'GraphQL error. Please try again in a moment.';
+                } else if (error.message.includes('Failed to save x-ray photos')) {
+                    errorMessage = 'Failed to save X-ray photos. Please try again.';
                 }
             }
 
@@ -526,6 +618,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                 <TouchableOpacity onPress={pickXrayImages} style={styles.uploadButton}>
                                     <Plus stroke={COLORS.primary} width={24} height={24} />
                                     <Text style={styles.uploadButtonText}>Add X-ray Images</Text>
+                                    {xrayImages.length > 0 && (
+                                    <Text style={styles.uploadButtonText}>{xrayImages.length}</Text>
+                                    )}
                                 </TouchableOpacity>
 
                                 {xrayImages.length > 0 && (
