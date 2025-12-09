@@ -1,4 +1,4 @@
-package com.goodang.wms
+package com.masters.xray
 
 import android.app.Application
 import android.content.res.Configuration

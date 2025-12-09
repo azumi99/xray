@@ -1,4 +1,4 @@
-package com.goodang.wms
+package com.masters.xray
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build
