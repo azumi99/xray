@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
-import { SafeAreaView, TouchableOpacity, Alert } from 'react-native';
-import { VStack, Input, InputField, Button, Box, HStack, FormControl, FormControlLabel, FormControlLabelText, Link, Text } from '@gluestack-ui/themed';
-import { useRouter } from 'expo-router';
-import { UserIcon, EyeIcon, EyeOffIcon } from 'lucide-react-native';
-import { useAuth } from '@/lib/store/auth';
 import { login as apiLogin } from '@/lib/api/authAPI';
+import { useAuth } from '@/lib/store/auth';
+import { Box, Button, FormControl, FormControlLabel, FormControlLabelText, HStack, Input, InputField, Link, Text, VStack } from '@gluestack-ui/themed';
+import { useRouter } from 'expo-router';
+import { EyeIcon, EyeOffIcon, UserIcon } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { Alert, SafeAreaView, TouchableOpacity } from 'react-native';
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
@@ -34,6 +34,7 @@ const LoginScreen = () => {
           id: response.user?.id || '',
           email: response.user?.email || '',
         };
+        console.log('User data extracted:', response); // Debug log
 
         login(response.token, userData);
 

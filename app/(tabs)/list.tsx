@@ -80,7 +80,7 @@ const ListScreen = () => {
     notifyOnNetworkStatusChange: true,
   });
 
-  console.log('GraphQL data:', JSON.stringify(data, null, 1));
+  // console.log('GraphQL data:', JSON.stringify(data, null, 1));
   
   const awbList = data?.airwaybillXrays?.data || [];
 

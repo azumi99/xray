@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, ScrollView, Image, Dimensions } from 'react-native';
-import { VStack, Box, HStack, LinearGradient, Badge, Pressable } from '@gluestack-ui/themed';
-import { router, useLocalSearchParams } from 'expo-router';
-import { PackageIcon, CalendarIcon, CameraIcon, ArrowLeftIcon } from 'lucide-react-native';
-import { useQuery, gql } from '@apollo/client';
 import { useAuth } from '@/lib/store/auth';
-import StatusBarSafeArea from '@/components/StatusBarSafeArea';
+import { gql, useQuery } from '@apollo/client';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams } from 'expo-router';
+import { CalendarIcon, CameraIcon, PackageIcon } from 'lucide-react-native';
+import React, { useEffect, useState } from 'react';
+import { Dimensions, Image, ScrollView, Text, View, StyleSheet } from 'react-native';
+import { router } from 'expo-router';
 
 // GraphQL query for AWB detail
 const GET_AWB_DETAIL = gql`
@@ -25,6 +25,156 @@ const GET_AWB_DETAIL = gql`
     }
   }
 `;
+
+// Define styles outside component to prevent undefined error
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 100,
+  },
+  statusBadge: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  badge: {
+    backgroundColor: '#DCFCE7',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  badgeText: {
+    color: '#16A34A',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  iconContainer: {
+    width: 48,
+    height: 48,
+    borderRadius: 12,
+    backgroundColor: '#0284C7',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  headerText: {
+    flex: 1,
+  },
+  title: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#1F2937',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 12,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#374151',
+  },
+  infoLabel: {
+    fontSize: 13,
+    color: '#6B7280',
+    marginRight: 8,
+    minWidth: 80,
+  },
+  imageContainer: {
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+    marginBottom: 8,
+  },
+  image: {
+    width: '100%',
+    height: 200,
+    resizeMode: 'contain',
+  },
+  photoGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  photoItem: {
+    width: ((Dimensions.get('window').width - 48) / 2) - 6,
+    height: 120,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#F9FAFB',
+  },
+  photo: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  emptyState: {
+    alignItems: 'center',
+    padding: 32,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: '#6B7280',
+    textAlign: 'center',
+  },
+});
 
 const DetailScreen = () => {
   const params = useLocalSearchParams();
@@ -63,30 +213,30 @@ const DetailScreen = () => {
     }
   }, [awbData?.photo_airwaybill]);
 
+  // Update document title for web and potentially other platforms
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      document.title = awbData?.airwaybill_number || 'AWB Details';
+    }
+  }, [awbData?.airwaybill_number]);
+
+  const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace('/api', '/storage');
+
+const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
+
   // Loading state
   if (graphQLLoading) {
     return (
       <LinearGradient
         colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-        style={{ flex: 1 }}
+        style={styles.container}
       >
-        <StatusBarSafeArea>
-          <VStack flex={1} alignItems="center" justifyContent="center">
-            <Box
-              w="$16"
-              h="$16"
-              borderRadius="$xl"
-              bg="rgba(2, 132, 199, 0.1)"
-              alignItems="center"
-              justifyContent="center"
-            >
-              <PackageIcon size={40} color="#0284C7" />
-            </Box>
-            <Text mt="$4" color="$text500" fontSize="$lg">
-              Loading AWB Detail...
-            </Text>
-          </VStack>
-        </StatusBarSafeArea>
+        <View style={[styles.scrollView, styles.emptyState]}>
+          <View style={styles.emptyIcon}>
+            <PackageIcon size={32} color="#0284C7" />
+          </View>
+          <Text style={styles.emptyTitle}>Loading AWB Detail...</Text>
+        </View>
       </LinearGradient>
     );
   }
@@ -96,33 +246,23 @@ const DetailScreen = () => {
     return (
       <LinearGradient
         colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-        style={{ flex: 1 }}
+        style={styles.container}
       >
-        <StatusBarSafeArea>
-          <VStack flex={1} alignItems="center" justifyContent="center" p="$4">
-            <Box
-              w="$16"
-              h="$16"
-              borderRadius="$xl"
-              bg="rgba(239, 68, 68, 0.1)"
-              alignItems="center"
-              justifyContent="center"
-            >
-              <PackageIcon size={40} color="#EF4444" />
-            </Box>
-            <Text mt="$4" color="$text500" fontSize="$lg" textAlign="center">
-              Error loading AWB detail
-            </Text>
-            <Text mt="$2" color="$text400" fontSize="$sm" textAlign="center">
-              {error.message}
-            </Text>
-            <Pressable onPress={() => router.back()} style={{ marginTop: 20 }}>
-              <Box bg="$primary600" px="$6" py="$3" borderRadius="$md">
-                <Text color="white" fontWeight="600">Go Back</Text>
-              </Box>
-            </Pressable>
-          </VStack>
-        </StatusBarSafeArea>
+        <View style={[styles.scrollView, styles.emptyState]}>
+          <View style={[styles.emptyIcon, { backgroundColor: '#FEE2E2' }]}>
+            <PackageIcon size={32} color="#DC2626" />
+          </View>
+          <Text style={styles.emptyTitle}>Error loading AWB detail</Text>
+          <Text style={styles.emptySubtitle}>{error.message}</Text>
+          <View
+            style={[styles.badge, {
+              backgroundColor: '#0284C7',
+              marginTop: 16
+            }]}
+          >
+            <Text style={[styles.badgeText, { color: 'white' }]}>Go Back</Text>
+          </View>
+        </View>
       </LinearGradient>
     );
   }
@@ -142,238 +282,94 @@ const DetailScreen = () => {
   return (
     <LinearGradient
       colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-      style={{ flex: 1 }}
+      style={styles.container}
     >
-      <StatusBarSafeArea>
-        {/* Header */}
-        <Box
-          bg="rgba(255, 255, 255, 0.9)"
-          borderBottomWidth={1}
-          borderBottomColor="$borderLight200"
-          p="$4"
-        >
-          <HStack alignItems="center" space="md">
-            <Pressable onPress={() => router.back()}>
-              <Box
-                w="$10"
-                h="$10"
-                borderRadius="$full"
-                bg="$primary100"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <ArrowLeftIcon size={20} color="#0284C7" />
-              </Box>
-            </Pressable>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Status Badge */}
+        <View style={styles.statusBadge}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>COMPLETED</Text>
+          </View>
+        </View>
 
-            <VStack flex={1}>
-              <Text fontWeight="bold" fontSize="$lg" color="$text900">
-                AWB Details
-              </Text>
-              <Text color="$text500" fontSize="$sm">
-                {awbData?.airwaybill_number || 'N/A'}
-              </Text>
-            </VStack>
+        {/* AWB Information Card */}
+        <View style={styles.card}>
+          <View style={styles.header}>
+            <View style={styles.iconContainer}>
+              <PackageIcon size={24} color="white" />
+            </View>
+            <View style={styles.headerText}>
+              <Text style={styles.title}>{awbData?.airwaybill_number || 'N/A'}</Text>
+              <Text style={styles.subtitle}>AWB Number</Text>
+            </View>
+          </View>
 
-            <Badge
-              bg="$success100"
-              px="$3"
-              py="$1"
-              borderRadius="$full"
-            >
-              <Text color="$success600" fontWeight="$600" fontSize="$sm">
-                COMPLETED
-              </Text>
-            </Badge>
-          </HStack>
-        </Box>
+          <View style={styles.divider} />
 
-        <ScrollView
-          contentContainerStyle={{
-            paddingBottom: 120,
-            paddingTop: 20
-          }}
-          showsVerticalScrollIndicator={false}
-        >
-          <VStack space="lg" px="$4">
-            {/* AWB Information Card */}
-            <Box
-              bg="$white"
-              borderRadius="$2xl"
-              p="$5"
-              shadow="$2"
-              borderWidth={1}
-              borderColor="$borderLight100"
-            >
-              <VStack space="md">
-                <HStack alignItems="center" space="md">
-                  <Box
-                    w="$12"
-                    h="$12"
-                    borderRadius="$xl"
-                    bg="linear-gradient(135deg, #0284C7 0%, #0369A1 100%)"
-                    alignItems="center"
-                    justifyContent="center"
-                    shadow="$2"
-                  >
-                    <PackageIcon size={24} color="white" />
-                  </Box>
-                  <VStack flex={1}>
-                    <Text fontWeight="bold" fontSize="$2xl" color="$text900">
-                      {awbData?.airwaybill_number || 'N/A'}
-                    </Text>
-                    <Text color="$text500" fontSize="$sm">
-                      AWB Number
-                    </Text>
-                  </VStack>
-                </HStack>
+          <View style={styles.infoRow}>
+            <CalendarIcon size={16} color="#9CA3AF" />
+            <Text style={styles.infoLabel}>Created:</Text>
+            <Text style={styles.infoText}>{formatDate(awbData?.created_at)}</Text>
+          </View>
 
-                <Box
-                  h="$1"
-                  bg="$borderLight200"
-                  my="$2"
-                />
+          <View style={styles.infoRow}>
+            <CameraIcon size={16} color="#9CA3AF" />
+            <Text style={styles.infoLabel}>Photos:</Text>
+            <Text style={styles.infoText}>{awbData?.xray_photos_count || 0} X-ray photos</Text>
+          </View>
+        </View>
 
-                <VStack space="sm">
-                  <HStack alignItems="center" space="sm">
-                    <CalendarIcon size={16} color="$text400" />
-                    <Text color="$text600" fontSize="$sm">Created:</Text>
-                    <Text color="$text900" fontSize="$sm" fontWeight="500">
-                      {formatDate(awbData?.created_at)}
-                    </Text>
-                  </HStack>
+        {/* Airwaybill Photo */}
+        {awbData?.photo_airwaybill && (
+          <View style={styles.card}>
+            <Text style={styles.title}>Airwaybill Photo</Text>
+            <View style={styles.imageContainer}>
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.image}
+                onLoad={handleImageLoad}
+              />
+            </View>
+          </View>
+        )}
 
-                  <HStack alignItems="center" space="sm">
-                    <CameraIcon size={16} color="$text400" />
-                    <Text color="$text600" fontSize="$sm">Total X-ray Photos:</Text>
-                    <Text color="$text900" fontSize="$sm" fontWeight="500">
-                      {awbData?.xray_photos_count || 0}
-                    </Text>
-                  </HStack>
-                </VStack>
-              </VStack>
-            </Box>
+        {/* X-ray Photos */}
+        {xrayPhotos.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.header}>
+              <Text style={styles.title}>X-ray Photos</Text>
+              <Text style={styles.subtitle}>{xrayPhotos.length} photos</Text>
+            </View>
+            <View style={styles.photoGrid}>
+              {xrayPhotos.map((photo, index) => (
+                <View key={index} style={styles.photoItem}>
+                  <Image
+                    source={{ uri: photo }}
+                    style={styles.photo}
+                  />
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
-            {/* Airwaybill Photo */}
-            {awbData?.photo_airwaybill && (
-              <Box
-                bg="$white"
-                borderRadius="$2xl"
-                p="$5"
-                shadow="$2"
-                borderWidth={1}
-                borderColor="$borderLight100"
-              >
-                <VStack space="md">
-                  <Text fontWeight="600" color="$text900" fontSize="$lg">
-                    Airwaybill Photo
-                  </Text>
-
-                  <Box
-                    borderRadius="$xl"
-                    overflow="hidden"
-                    shadow="$1"
-                  >
-                    <Image
-                      source={{ uri: awbData.photo_airwaybill }}
-                      style={{
-                        width: '100%',
-                        height: imageDimensions.height || 250,
-                        resizeMode: 'contain',
-                        backgroundColor: '#F9FAFB'
-                      }}
-                    />
-                  </Box>
-                </VStack>
-              </Box>
-            )}
-
-            {/* X-ray Photos */}
-            {xrayPhotos.length > 0 && (
-              <Box
-                bg="$white"
-                borderRadius="$2xl"
-                p="$5"
-                shadow="$2"
-                borderWidth={1}
-                borderColor="$borderLight100"
-              >
-                <VStack space="md">
-                  <HStack justifyContent="space-between" alignItems="center">
-                    <Text fontWeight="600" color="$text900" fontSize="$lg">
-                      X-ray Photos
-                    </Text>
-                    <Text color="$text500" fontSize="$sm">
-                      {xrayPhotos.length} photos
-                    </Text>
-                  </HStack>
-
-                  <ScrollView
-                    horizontal
-                    showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={{ gap: 12 }}
-                  >
-                    {xrayPhotos.map((photo, index) => (
-                      <Box key={index} style={{ marginRight: 12 }}>
-                        <Box
-                          width={120}
-                          height={120}
-                          borderRadius="$md"
-                          overflow="hidden"
-                          borderWidth={1}
-                          borderColor="$borderLight200"
-                          shadow="$1"
-                        >
-                          <Image
-                            source={{ uri: photo }}
-                            style={{
-                              width: '100%',
-                              height: '100%',
-                              resizeMode: 'cover',
-                              backgroundColor: '#F9FAFB'
-                            }}
-                          />
-                        </Box>
-                      </Box>
-                    ))}
-                  </ScrollView>
-                </VStack>
-              </Box>
-            )}
-
-            {/* No Photos State */}
-            {!awbData?.photo_airwaybill && xrayPhotos.length === 0 && (
-              <Box
-                bg="$white"
-                borderRadius="$2xl"
-                p="$8"
-                shadow="$2"
-                borderWidth={1}
-                borderColor="$borderLight100"
-                alignItems="center"
-              >
-                <Box
-                  w="$16"
-                  h="$16"
-                  borderRadius="$xl"
-                  bg="rgba(156, 163, 175, 0.1)"
-                  alignItems="center"
-                  justifyContent="center"
-                  mb="$4"
-                >
-                  <CameraIcon size={32} color="#9CA3AF" />
-                </Box>
-                <Text color="$text500" fontSize="$lg" fontWeight="600" textAlign="center">
-                  No Photos Available
-                </Text>
-                <Text color="$text400" fontSize="$sm" textAlign="center" mt="$2">
-                  This AWB doesn't have any photos yet
-                </Text>
-              </Box>
-            )}
-          </VStack>
-        </ScrollView>
-      </StatusBarSafeArea>
+        {/* No Photos State */}
+        {!awbData?.photo_airwaybill && xrayPhotos.length === 0 && (
+          <View style={[styles.card, styles.emptyState]}>
+            <View style={styles.emptyIcon}>
+              <CameraIcon size={32} color="#9CA3AF" />
+            </View>
+            <Text style={styles.emptyTitle}>No Photos Available</Text>
+            <Text style={styles.emptySubtitle}>
+              This AWB doesn't have any photos yet
+            </Text>
+          </View>
+        )}
+      </ScrollView>
     </LinearGradient>
   );
 };
