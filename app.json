@@ -22,7 +22,8 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.masters.xray"
+      "package": "com.masters.xray",
+      "extraGradleArgs": ["-Pcmake.version=3.22.1"] 
     },
     "web": {
       "output": "static",

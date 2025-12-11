@@ -8,6 +8,7 @@ module.exports = function (api) {
         {
           relativeSourceLocation: true,
         },
+        // 'react-native-worklets/plugin',
       ],
     ],
   };

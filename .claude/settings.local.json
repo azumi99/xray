@@ -7,7 +7,18 @@
       "Bash(yarn remove:*)",
       "Bash(npx expo install:*)",
       "Bash(npx expo r:*)",
-      "Bash(npx expo start:*)"
+      "Bash(npx expo start:*)",
+      "Bash(npx expo run:android:*)",
+      "Bash(npm view:*)",
+      "Bash(npm install:*)",
+      "Bash(./gradlew:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm uninstall:*)",
+      "WebSearch",
+      "Bash(npx expo export:*)",
+      "Bash(tasklist:*)"
     ],
     "deny": [],
     "ask": []
