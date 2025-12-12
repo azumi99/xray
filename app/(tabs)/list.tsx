@@ -1,6 +1,7 @@
 import AwbListItem from '@/components/AwbListItem';
 import EmptyState from '@/components/EmptyState';
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
+import SwipeList from '@/components/SwipeList';
 import { useAuth } from '@/lib/store/auth';
 import { formatDateTime } from '@/utils/formatDate';
 import { gql, useQuery } from '@apollo/client';
@@ -29,7 +30,6 @@ import {
   NativeScrollEvent,
   NativeSyntheticEvent,
   RefreshControl,
-  ScrollView,
   TouchableOpacity,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -84,7 +84,7 @@ const ListScreen = () => {
   
   const awbList = data?.airwaybillXrays?.data || [];
 
-  const scrollRef = useRef<ScrollView | null>(null);
+  const swipeListRef = useRef<any>(null);
 
   // Sort dan filter list
   const filteredAwbList = useMemo(() => {
@@ -153,8 +153,8 @@ const ListScreen = () => {
   };
 
   const scrollToTop = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTo({ y: 0, animated: true });
+    if (swipeListRef.current) {
+      swipeListRef.current.scrollToOffset({ offset: 0, animated: true });
     }
   };
 
@@ -352,24 +352,8 @@ const ListScreen = () => {
             </LinearGradient>
           </Box>
 
-          {/* Scrollable Content */}
-          <ScrollView
-            ref={scrollRef}
-            contentContainerStyle={{
-              paddingTop: 12,
-              paddingBottom: fabBottomPosition + 40,
-            }}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={onRefresh}
-                colors={['#0284C7']}
-                tintColor="#0284C7"
-              />
-            }
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-          >
+          {/* Content with SwipeList handling its own scrolling */}
+          <Box style={{ flex: 1, paddingTop: 12 }}>
             {/* Stats Row */}
             <HStack
               justifyContent="space-between"
@@ -397,18 +381,17 @@ const ListScreen = () => {
 
             {/* AWB List / Empty State */}
             {filteredAwbList.length > 0 ? (
-              <VStack space="sm">
-                {filteredAwbList.map((item: any, index: number) => (
-                  <AwbListItem
-                    key={item.id}
-                    awbNumber={item.airwaybill_number}
-                    date={formatDateTime(new Date(item.created_at))}
-                    onPress={() => handleItemPress(item.id)}
-                    index={index}
-                    status="Pending"
-                  />
-                ))}
-              </VStack>
+              <SwipeList
+                ref={swipeListRef}
+                data={filteredAwbList}
+                onItemClick={handleItemPress}
+                onRefresh={onRefresh}
+                refreshing={refreshing}
+                onScroll={handleScroll}
+                contentContainerStyle={{
+                  paddingBottom: fabBottomPosition + 40,
+                }}
+              />
             ) : (
               <Box mt="$8">
                 <EmptyState
@@ -422,7 +405,7 @@ const ListScreen = () => {
                 />
               </Box>
             )}
-          </ScrollView>
+          </Box>
         </Box>
 
         {/* Scroll To Top Button */}
