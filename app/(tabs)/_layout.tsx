@@ -23,6 +23,7 @@ const TabLayout = () => {
     setShowOCRModal(false);
   };
 
+
   return (
     <>
       <Tabs
@@ -46,7 +47,7 @@ const TabLayout = () => {
           }}
         />
       </Tabs>
-      <BottomNav onAddPress={handleAddPress} onOcrPress={handleOcrPress} />
+       <BottomNav onAddPress={handleAddPress} onOcrPress={handleOcrPress} />
 
       {/* Camera Modal */}
      
