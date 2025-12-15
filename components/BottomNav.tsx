@@ -5,10 +5,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PackageIcon, UserIcon, ScanText } from 'lucide-react-native';
 
 interface BottomNavProps {
+  onAddPress?: () => void;
   onOcrPress?: () => void;
 }
 
-const BottomNav = ({ onOcrPress }: BottomNavProps) => {
+const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('list');
   const insets = useSafeAreaInsets();
@@ -19,10 +20,9 @@ const BottomNav = ({ onOcrPress }: BottomNavProps) => {
   };
 
   const handleOcrPress = () => {
+    setActiveTab('ocr');
     if (onOcrPress) {
       onOcrPress();
-    } else {
-      console.log('OCR button pressed');
     }
   };
 

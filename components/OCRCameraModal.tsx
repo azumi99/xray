@@ -3,7 +3,7 @@ import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-ca
 import * as Clipboard from 'expo-clipboard';
 import * as ImagePicker from 'expo-image-picker';
 import { extractTextFromImage } from 'expo-text-extractor';
-import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Plus, X, Zap, ZapOff } from 'lucide-react-native';
+import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Plus, RefreshCw, X, Zap, ZapOff } from 'lucide-react-native';
 import React, { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -19,6 +19,16 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '../lib/store/auth';
+
+// Interface untuk X-ray image dengan status tracking
+interface XrayImage {
+  id: string;
+  uri: string;
+  status: 'pending' | 'uploading' | 'success' | 'error';
+  progress?: number;
+  error?: string;
+  uploadedPath?: string;
+}
 
 // GraphQL mutation for creating airwaybill (basic version)
 const CREATE_AIRWAYBILL_MUTATION = gql`
@@ -61,8 +71,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [extractedText, setExtractedText] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
     const [copied, setCopied] = useState(false);
-    const [xrayImages, setXrayImages] = useState<string[]>([]);
+    const [xrayImages, setXrayImages] = useState<XrayImage[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploadingXray, setIsUploadingXray] = useState(false);
     const cameraRef = useRef<CameraView>(null);
     console.log('OCRCameraModal rendered with visible:', xrayImages);
 
@@ -115,8 +126,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         });
 
         if (!result.canceled && result.assets) {
-            const newImage = result.assets[0].uri;
+            const newImage: XrayImage = {
+                id: `camera_${Date.now()}`,
+                uri: result.assets[0].uri,
+                status: 'pending',
+            };
             setXrayImages(prev => [...prev, newImage]);
+            // Mulai upload otomatis
+            uploadSingleXrayImage(newImage);
         }
     };
 
@@ -134,16 +151,122 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         });
 
         if (!result.canceled && result.assets) {
-            const newImages = result.assets.map(asset => asset.uri);
+            const newImages: XrayImage[] = result.assets.map(asset => ({
+                id: `gallery_${Date.now()}_${asset.uri}`,
+                uri: asset.uri,
+                status: 'pending',
+            }));
             setXrayImages(prev => [...prev, ...newImages]);
+
+            // Mulai upload otomatis untuk setiap image
+            newImages.forEach(image => {
+                uploadSingleXrayImage(image);
+            });
         }
     };
 
-    const removeXrayImage = (index: number) => {
-        setXrayImages(prev => prev.filter((_, i) => i !== index));
+    const removeXrayImage = (id: string) => {
+        setXrayImages(prev => prev.filter(img => img.id !== id));
     };
 
-    // Function to upload image to API
+    // Upload single X-ray image dengan progress tracking
+    const uploadSingleXrayImage = async (xrayImage: XrayImage) => {
+        try {
+            // Update status ke uploading
+            setXrayImages(prev => prev.map(img =>
+                img.id === xrayImage.id ? { ...img, status: 'uploading', progress: 0 } : img
+            ));
+
+            // Check if session exists
+            if (!session) {
+                throw new Error('No authentication token available');
+            }
+
+            // Create FormData for file upload
+            const formData = new FormData();
+            formData.append('image', {
+                uri: xrayImage.uri,
+                type: 'image/jpeg',
+                name: `xray_${Date.now()}.jpg`,
+            } as any);
+
+            // Simulate progress updates
+            const progressInterval = setInterval(() => {
+                setXrayImages(prev => prev.map(img => {
+                    if (img.id === xrayImage.id && img.status === 'uploading') {
+                        const newProgress = (img.progress || 0) + 10;
+                        return newProgress >= 90 ? img : { ...img, progress: newProgress };
+                    }
+                    return img;
+                }));
+            }, 100);
+
+            // Upload image to the API with authorization
+            const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/xray/upload`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                    'Authorization': `Bearer ${session}`,
+                },
+                body: formData,
+            });
+
+            clearInterval(progressInterval);
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Upload failed: ${response.status} - ${errorText}`);
+            }
+
+            const result = await response.json();
+
+            // Check if the response contains image_path
+            if (!result.image_path) {
+                console.error('Upload response:', result);
+                throw new Error('No image_path in response');
+            }
+
+            // Update status ke success
+            setXrayImages(prev => prev.map(img =>
+                img.id === xrayImage.id ? {
+                    ...img,
+                    status: 'success',
+                    progress: 100,
+                    uploadedPath: result.image_path
+                } : img
+            ));
+
+            return result.image_path;
+        } catch (error) {
+            console.error('Image upload error:', error);
+
+            // Update status ke error
+            setXrayImages(prev => prev.map(img =>
+                img.id === xrayImage.id ? {
+                    ...img,
+                    status: 'error',
+                    progress: 0,
+                    error: error instanceof Error ? error.message : 'Upload failed'
+                } : img
+            ));
+
+            return null;
+        }
+    };
+
+    // Retry upload untuk image yang gagal
+    const retryUploadXrayImage = (id: string) => {
+        setXrayImages(prev => prev.map(img =>
+            img.id === id ? { ...img, status: 'pending', progress: 0, error: undefined } : img
+        ));
+
+        const imageToRetry = xrayImages.find(img => img.id === id);
+        if (imageToRetry) {
+            uploadSingleXrayImage(imageToRetry);
+        }
+    };
+
+    // Function to upload AWB image to API
     const uploadImage = async (imageUri: string): Promise<string | null> => {
         try {
             // Check if session exists
@@ -317,12 +440,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         setExtractedText('');
         setXrayImages([]);
         setCopied(false);
+        setIsUploadingXray(false);
         onClose();
     };
 
     const handleDone = async () => {
         console.log('🔄 Handling Done with AWB:', session);
-        console.log('📸 X-ray images to process:', xrayImages.length);
+        console.log('📸 X-ray images ready:', xrayImages.length);
 
         // Validate authentication
         if (!session) {
@@ -338,6 +462,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
         if (!extractedText.trim()) {
             Alert.alert('Error', 'Please enter or confirm the AWB number');
+            return;
+        }
+
+        // Check if there are images still uploading
+        const uploadingImages = xrayImages.filter(img => img.status === 'uploading');
+        if (uploadingImages.length > 0) {
+            Alert.alert('Upload in Progress', 'Please wait for all X-ray images to finish uploading.');
             return;
         }
 
@@ -372,60 +503,48 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             const awbId = data.createAirwaybillXray.id;
             console.log('✅ AWB created successfully with ID:', awbId);
 
-            // Step 3: Upload all x-ray photos
-            let xrayPhotoPaths: string[] = [];
-            if (xrayImages.length > 0) {
-                console.log(`📸 Uploading ${xrayImages.length} x-ray images...`);
+            // Step 3: Use x-ray photos yang sudah berhasil di-upload saat selection
+            const xrayPhotoPaths = xrayImages
+                .filter(img => img.status === 'success' && img.uploadedPath)
+                .map(img => img.uploadedPath!);
 
-                // Upload all x-ray images sequentially
-                for (let i = 0; i < xrayImages.length; i++) {
-                    console.log(`📸 Uploading x-ray image ${i + 1}/${xrayImages.length}`);
-                    const xrayPath = await uploadImage(xrayImages[i]);
-                    if (xrayPath) {
-                        xrayPhotoPaths.push(xrayPath);
-                        console.log(`✅ X-ray image ${i + 1} uploaded:`, xrayPath);
-                    } else {
-                        console.warn(`❌ Failed to upload x-ray image ${i + 1}`);
+            console.log('📸 Successfully uploaded X-ray photos:', xrayPhotoPaths.length);
+
+            // Step 4: Create airwaybill details for x-ray photos one by one
+            if (xrayPhotoPaths.length > 0) {
+                console.log(`💾 Creating ${xrayPhotoPaths.length} airwaybill x-ray details...`);
+                let successCount = 0;
+
+                for (let i = 0; i < xrayPhotoPaths.length; i++) {
+                    try {
+                        console.log(`💾 Creating detail ${i + 1}/${xrayPhotoPaths.length}:`, xrayPhotoPaths[i]);
+
+                        const { data: detailData, errors: detailErrors } = await createAirwaybillDetail({
+                            variables: {
+                                input: {
+                                    id_airwaybill: awbId,
+                                    xray_photo: xrayPhotoPaths[i],
+                                },
+                            },
+                        });
+
+                        if (detailErrors) {
+                            console.error(`❌ Failed to create detail ${i + 1}:`, detailErrors);
+                        } else {
+                            console.log(`✅ Detail ${i + 1} created successfully:`, detailData);
+                            successCount++;
+                        }
+                    } catch (error) {
+                        console.error(`❌ Error creating detail ${i + 1}:`, error);
                     }
                 }
-                console.log('📸 All x-ray photo paths collected:', xrayPhotoPaths);
 
-                // Step 4: Create airwaybill details for x-ray photos one by one
-                if (xrayPhotoPaths.length > 0) {
-                    console.log(`💾 Creating ${xrayPhotoPaths.length} airwaybill x-ray details...`);
-                    let successCount = 0;
+                console.log(`💾 Successfully created ${successCount}/${xrayPhotoPaths.length} airwaybill details`);
 
-                    for (let i = 0; i < xrayPhotoPaths.length; i++) {
-                        try {
-                            console.log(`💾 Creating detail ${i + 1}/${xrayPhotoPaths.length}:`, xrayPhotoPaths[i]);
-
-                            const { data: detailData, errors: detailErrors } = await createAirwaybillDetail({
-                                variables: {
-                                    input: {
-                                        id_airwaybill: awbId,
-                                        xray_photo: xrayPhotoPaths[i],
-                                    },
-                                },
-                            });
-
-                            if (detailErrors) {
-                                console.error(`❌ Failed to create detail ${i + 1}:`, detailErrors);
-                            } else {
-                                console.log(`✅ Detail ${i + 1} created successfully:`, detailData);
-                                successCount++;
-                            }
-                        } catch (error) {
-                            console.error(`❌ Error creating detail ${i + 1}:`, error);
-                        }
-                    }
-
-                    console.log(`💾 Successfully created ${successCount}/${xrayPhotoPaths.length} airwaybill details`);
-
-                    if (successCount === 0) {
-                        throw new Error('Failed to save any x-ray photos to database');
-                    } else if (successCount < xrayPhotoPaths.length) {
-                        console.warn(`⚠️ Only ${successCount} out of ${xrayPhotoPaths.length} x-ray photos were saved successfully`);
-                    }
+                if (successCount === 0) {
+                    throw new Error('Failed to save any x-ray photos to database');
+                } else if (successCount < xrayPhotoPaths.length) {
+                    console.warn(`⚠️ Only ${successCount} out of ${xrayPhotoPaths.length} x-ray photos were saved successfully`);
                 }
             }
 
@@ -443,7 +562,8 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                         text: 'OK',
                         onPress: () => {
                             if (onCaptureComplete) {
-                                onCaptureComplete(extractedText.trim(), xrayImages);
+                                const imageUris = xrayImages.map(img => img.uri);
+                                onCaptureComplete(extractedText.trim(), imageUris);
                             }
                             handleClose();
                         },
@@ -459,13 +579,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 if (error.message.includes('No authentication token')) {
                     errorMessage = 'Authentication required. Please log in again.';
                 } else if (error.message.includes('Upload failed')) {
-                    errorMessage = 'Failed to upload image. Please check your connection and try again.';
+                    errorMessage = 'Failed to upload AWB image. Please check your connection and try again.';
                 } else if (error.message.includes('Failed to create AWB record')) {
                     errorMessage = 'Failed to save AWB data. Please try again.';
                 } else if (error.message.includes('ApolloError')) {
                     errorMessage = 'GraphQL error. Please try again in a moment.';
                 } else if (error.message.includes('Failed to save x-ray photos')) {
-                    errorMessage = 'Failed to save X-ray photos. Please try again.';
+                    errorMessage = 'Failed to save X-ray photos to database. Please try again.';
                 }
             }
 
@@ -625,11 +745,47 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {xrayImages.length > 0 && (
                                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-                                        {xrayImages.map((uri, index) => (
-                                            <View key={index} style={styles.imagePreviewContainer}>
-                                                <Image source={{ uri }} style={styles.xrayImagePreview} />
+                                        {xrayImages.map((xrayImage, index) => (
+                                            <View key={xrayImage.id} style={styles.imagePreviewContainer}>
+                                                <Image
+                                                    source={{ uri: xrayImage.uri }}
+                                                    style={[
+                                                        styles.xrayImagePreview,
+                                                        xrayImage.status === 'success' ? null : styles.uploadedImageOpacity
+                                                    ]}
+                                                />
+
+                                                {/* Progress overlay for uploading images */}
+                                                {xrayImage.status === 'uploading' && (
+                                                    <View style={styles.uploadProgressOverlay}>
+                                                        <ActivityIndicator size="small" color={COLORS.white} />
+                                                        <Text style={styles.progressText}>
+                                                            {xrayImage.progress || 0}%
+                                                        </Text>
+                                                    </View>
+                                                )}
+
+                                                {/* Success overlay */}
+                                                {xrayImage.status === 'success' && (
+                                                    <View style={styles.successOverlay}>
+                                                        <Check stroke={COLORS.white} width={20} height={20} />
+                                                    </View>
+                                                )}
+
+                                                {/* Error overlay with retry button */}
+                                                {xrayImage.status === 'error' && (
+                                                    <View style={styles.errorOverlay}>
+                                                        <TouchableOpacity
+                                                            onPress={() => retryUploadXrayImage(xrayImage.id)}
+                                                            style={styles.retryButton}
+                                                        >
+                                                            <RefreshCw stroke={COLORS.white} width={16} height={16} />
+                                                        </TouchableOpacity>
+                                                    </View>
+                                                )}
+
                                                 <TouchableOpacity
-                                                    onPress={() => removeXrayImage(index)}
+                                                    onPress={() => removeXrayImage(xrayImage.id)}
                                                     style={styles.removeImageButton}
                                                 >
                                                     <X stroke={COLORS.white} width={16} height={16} />
@@ -1042,6 +1198,7 @@ const styles = StyleSheet.create({
         height: 24,
         alignItems: 'center',
         justifyContent: 'center',
+        zIndex: 3,
     },
     disabledButton: {
         backgroundColor: COLORS.gray,
@@ -1051,6 +1208,60 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
+    },
+    // Upload status styles
+    uploadedImageOpacity: {
+        opacity: 0.6,
+    },
+    uploadProgressOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+        borderRadius: SPACING.s,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2,
+    },
+    successOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(34, 197, 94, 0.8)',
+        borderRadius: SPACING.s,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2,
+    },
+    errorOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(239, 68, 68, 0.8)',
+        borderRadius: SPACING.s,
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 2,
+    },
+    retryButton: {
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: 16,
+        width: 32,
+        height: 32,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    progressText: {
+        color: COLORS.white,
+        fontSize: 12,
+        fontWeight: '600',
+        marginTop: 4,
     },
 });
 
