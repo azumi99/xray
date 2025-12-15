@@ -8,6 +8,10 @@ const AUTH_TOKEN_KEY = "token";
 // HTTP link to GraphQL server
 const httpLink = createHttpLink({
   uri: process.env.EXPO_PUBLIC_GRAPHQL_URL || 'http://localhost:8000/graphql',
+  // Add headers for debugging
+  headers: {
+    'Content-Type': 'application/json',
+  },
 });
 
 // Middleware to add auth headers if needed

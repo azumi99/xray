@@ -18,7 +18,8 @@
       "Bash(npm uninstall:*)",
       "WebSearch",
       "Bash(npx expo export:*)",
-      "Bash(tasklist:*)"
+      "Bash(tasklist:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []
