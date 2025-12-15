@@ -1,7 +1,7 @@
 # AWB Queries
 
-query GetAwbList {
-  airwaybillXrays(first: 50, page: 1) {
+query SearchAwbs($search: String, $first: Int, $page: Int) {
+  searchAirwaybillxrays(search: $search, first: $first, page: $page) {
     data {
       id
       airwaybill_number
@@ -11,10 +11,26 @@ query GetAwbList {
       xray_photos_count
     }
     paginatorInfo {
+      count
       currentPage
+      firstItem
+      hasMorePages
+      lastItem
       lastPage
+      perPage
       total
     }
+  }
+}
+
+query SearchAwbByNumber($airwaybill_number: String!) {
+  airwaybillXrayByNumber(airwaybill_number: $airwaybill_number) {
+    id
+    airwaybill_number
+    photo_airwaybill
+    created_at
+    updated_at
+    xray_photos_count
   }
 }
 

@@ -23,7 +23,9 @@ interface SwipeListProps {
   data: Array<{
     id: string;
     airwaybill_number: string;
+    photo_airwaybill?: string;
     created_at: string;
+    updated_at?: string;
     xray_photos_count?: number;
   }>;
   onRefresh?: () => void;
@@ -99,6 +101,8 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
   };
 
   const renderItem = ({ item, index }: { item: any; index: number }) => {
+    console.log('Rendering item:', item); // Debug log
+
     return (
       <View style={{
         backgroundColor: 'white',
@@ -112,7 +116,7 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
       }}>
         <AwbListItem
           key={item.id}
-          awbNumber={item.airwaybill_number}
+          awbNumber={item.airwaybill_number || 'N/A'}
           date={formatDateTime(new Date(item.created_at))}
           onPress={() => onItemClick(item.id)}
           index={index}

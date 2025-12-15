@@ -35,5 +35,6 @@
     "**/.expo": true,
     "**/node_modules": true
   },
-  "emmet.triggerExpansionOnTab": true
+  "emmet.triggerExpansionOnTab": true,
+  "java.configuration.updateBuildConfiguration": "automatic"
 }
