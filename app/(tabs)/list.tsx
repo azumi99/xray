@@ -65,6 +65,7 @@ const ListScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [hasScrolledDown, setHasScrolledDown] = useState(false);
 
   // Infinite scroll states
   const [currentPage, setCurrentPage] = useState(1);
@@ -177,12 +178,37 @@ const ListScreen = () => {
     setRefreshing(false);
   };
 
-  const handleSearch = (query: string) => {
+  const handleSearch = async (query: string) => {
     setSearchQuery(query);
-    // Reset infinite scroll when search changes
-    setCurrentPage(1);
-    setAllAwbData([]);
-    setHasMorePages(true);
+
+    // If search is being cleared, refetch all data
+    if (query === '') {
+      setRefreshing(true);
+      setCurrentPage(1);
+      setAllAwbData([]);
+      setHasMorePages(true);
+
+      try {
+        const refreshData = await refetch({
+          first: 20,
+          page: 1,
+        });
+
+        if (refreshData?.data?.airwaybillxrays?.data) {
+          setAllAwbData(refreshData.data.airwaybillxrays.data);
+          setHasMorePages(refreshData.data.airwaybillxrays.paginatorInfo?.hasMorePages || false);
+        }
+      } catch (err) {
+        console.error('Refetch error on clear search:', err);
+      } finally {
+        setRefreshing(false);
+      }
+    } else {
+      // For new search query, reset infinite scroll states
+      setCurrentPage(1);
+      setAllAwbData([]);
+      setHasMorePages(true);
+    }
   };
 
   const handleItemPress = (id: string) => {
@@ -235,6 +261,17 @@ const ListScreen = () => {
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollY = e.nativeEvent.contentOffset.y;
     setShowScrollTop(scrollY > 200);
+
+    // Track if user has scrolled down
+    if (scrollY > 100) {
+      setHasScrolledDown(true);
+    }
+
+    // Check if scrolled to top after scrolling down (reload trigger)
+    if (scrollY === 0 && hasScrolledDown && !refreshing && !graphQLLoading) {
+      setHasScrolledDown(false);
+      onRefresh();
+    }
 
     // Infinite scroll detection
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
