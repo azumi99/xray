@@ -115,7 +115,6 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
         elevation: 3,
       }}>
         <AwbListItem
-          key={item.id}
           awbNumber={item.airwaybill_number || 'N/A'}
           date={formatDateTime(new Date(item.created_at))}
           onPress={() => onItemClick(item.id)}
@@ -184,7 +183,7 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
       previewDuration={300}
       friction={2}
       tension={50}
-      keyExtractor={(item) => item.id}
+      keyExtractor={(item, index) => `${item.id}-${index}`}
       contentContainerStyle={contentContainerStyle}
       refreshControl={
         <RefreshControl
