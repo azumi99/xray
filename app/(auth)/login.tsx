@@ -7,6 +7,14 @@ import React, { useState } from 'react';
 import { Alert, TouchableOpacity, Platform, KeyboardAvoidingView, ScrollView, StyleSheet, Dimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Detox testIDs
+const TEST_IDS = {
+  EMAIL_INPUT: 'email_input',
+  PASSWORD_INPUT: 'password_input',
+  LOGIN_BUTTON: 'login_button',
+  SHOW_PASSWORD_BUTTON: 'show_password_button',
+};
+
 const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -117,6 +125,7 @@ const LoginScreen = () => {
                   borderWidth={1}
                   py="sm"
                   px="md"
+                  testID={TEST_IDS.EMAIL_INPUT}
                 >
                   <InputField
                     placeholder="Enter your email"
@@ -139,6 +148,7 @@ const LoginScreen = () => {
                   borderWidth={1}
                   py="sm"
                   px="md"
+                  testID={TEST_IDS.PASSWORD_INPUT}
                 >
                   <InputField
                     placeholder="Enter your password"
@@ -150,6 +160,7 @@ const LoginScreen = () => {
                   <TouchableOpacity
                     style={{ position: 'absolute', right: 12, top: 10 }}
                     onPress={() => setShowPassword(!showPassword)}
+                    testID={TEST_IDS.SHOW_PASSWORD_BUTTON}
                   >
                     {showPassword ? (
                       <EyeOffIcon size={20} color="#9CA3AF" />
@@ -193,8 +204,10 @@ const LoginScreen = () => {
                 py="md"
                 bg="$primary600"
                 onPress={handleLogin}
+                testID={TEST_IDS.LOGIN_BUTTON}
+                isDisabled={isLoading}
               >
-                <Text color="white" fontWeight="600">Sign In</Text>
+                <Text color="white" fontWeight="600">{isLoading ? 'Signing in...' : 'Sign In'}</Text>
               </Button>
 
               {/* Sign Up Link */}

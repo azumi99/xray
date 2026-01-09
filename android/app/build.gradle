@@ -95,7 +95,18 @@ android {
         versionCode 1
         versionName "1.0.0"
 
+        testBuildType System.getProperty('testBuildType', 'debug')
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        missingDimensionStrategy 'detox', 'full'
         buildConfigField "String", "REACT_NATIVE_RELEASE_LEVEL", "\"${findProperty('reactNativeReleaseLevel') ?: 'stable'}\""
+    }
+
+    configurations.all {
+        resolutionStrategy {
+            force 'com.wix:detox:20.46.3'  // Use specific version to avoid conflicts
+        }
+        exclude group: 'genymotion-api', module: 'genymotion-api'
+        exclude group: 'com.genymotion', module: 'genymotion-api'
     }
     signingConfigs {
         debug {
@@ -117,6 +128,7 @@ android {
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            proguardFile "${rootProject.projectDir}/../node_modules/detox/android/detox/proguard-rules-app.pro"
             def enablePngCrunchInRelease = findProperty('android.enablePngCrunchInReleaseBuilds') ?: 'true'
             crunchPngs enablePngCrunchInRelease.toBoolean()
         }
@@ -126,6 +138,9 @@ android {
             def enableLegacyPackaging = findProperty('expo.useLegacyPackaging') ?: 'false'
             useLegacyPackaging enableLegacyPackaging.toBoolean()
         }
+        pickFirst '**/genymotion-api/**'
+        pickFirst 'com/genymotion/api/**'
+        pickFirst 'META-INF/io.netty.versions.properties'
     }
     androidResources {
         ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:!CVS:!thumbs.db:!picasa.ini:!*~'
@@ -155,6 +170,15 @@ android {
 dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
+    implementation('com.wix:detox:20.46.3') {
+        exclude group: 'genymotion-api', module: 'genymotion-api'
+        exclude group: 'com.genymotion', module: 'genymotion-api'
+    }
+    implementation 'androidx.appcompat:appcompat:1.1.0'
+    androidTestImplementation(project(path: ":detox")) {
+        exclude group: 'genymotion-api', module: 'genymotion-api'
+        exclude group: 'com.genymotion', module: 'genymotion-api'
+    }
 
     def isGifEnabled = (findProperty('expo.gif.enabled') ?: "") == "true";
     def isWebpEnabled = (findProperty('expo.webp.enabled') ?: "") == "true";
@@ -178,5 +202,12 @@ dependencies {
         implementation("com.facebook.react:hermes-android")
     } else {
         implementation jscFlavor
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force 'com.wix:detox:20.46.3'
+        exclude group: 'genymotion-api', module: 'genymotion-api'
     }
 }

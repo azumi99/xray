@@ -8,7 +8,13 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:e2e:android:build": "detox build --configuration android.emu.debug",
+    "test:e2e:android:test": "detox test --configuration android.emu.debug",
+    "test:e2e:android": "npm run test:e2e:android:build && npm run test:e2e:android:test",
+    "test:e2e:ios:build": "detox build --configuration ios.sim.debug",
+    "test:e2e:ios:test": "detox test --configuration ios.sim.debug",
+    "test:e2e:ios": "npm run test:e2e:ios:build && npm run test:e2e:ios:test"
   },
   "dependencies": {
     "@apollo/client": "^3.9.0",
@@ -32,7 +38,7 @@
     "axios": "^1.13.1",
     "dayjs": "^1.11.19",
     "dotenv": "^17.2.3",
-    "expo": "~54.0.28",
+    "expo": "^54.0.31",
     "expo-build-properties": "~1.0.10",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
@@ -57,7 +63,7 @@
     "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
-    "react-native": "0.81.5",
+    "react-native": "0.80.2",
     "react-native-compressor": "^1.13.0",
     "react-native-gesture-handler": "~2.28.0",
     "react-native-reanimated": "~4.1.1",
@@ -72,8 +78,10 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.10",
+    "detox": "^20.46.3",
     "eslint": "^9.25.0",
     "eslint-config-expo": "~10.0.0",
+    "jest": "^29.7.0",
     "typescript": "~5.9.2"
   },
   "private": true,
