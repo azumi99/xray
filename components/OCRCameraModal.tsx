@@ -1,3 +1,4 @@
+import { sendAwb } from '@/lib/api/services/agentScan';
 import { gql, useMutation } from '@apollo/client';
 import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
@@ -69,7 +70,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [facing, setFacing] = useState<CameraType>('back');
     const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
     const [extractedText, setExtractedText] = useState<string>('');
+    const [extractedHawb, setExtractedHawb] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [messageLoading, setMessageLoading] = useState('');
     const [copied, setCopied] = useState(false);
     const [xrayImages, setXrayImages] = useState<XrayImage[]>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -381,6 +384,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
     const processOCR = async (imageUri: string) => {
     setIsProcessing(true);
+    setMessageLoading('Extracting text from image...');
     setExtractedText('');
 
     try {
@@ -395,6 +399,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         );
 
         const joined = cleaned.join(' ');
+        console.log('Extracted AWB before formatting:', cleaned);
 
         let awb =
             joined.match(/\b\d{3}-\d{8}\b/)?.[0] ??
@@ -404,21 +409,50 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             })() ??
             joined.match(/\b\d{8}\b/)?.[0] ??
             null;
+        let hawb = 
+            
+            // Fallback: Cari pola EHAN / KGL yang diikuti angka
+            joined.match(/\b(EHAN|KGL|FHAN)[A-Z0-9]+\b/)?.[0] ??
+            
+            null;
 
-        if (awb) {
-            setExtractedText(awb);
+        if (awb && hawb) {    
+            setExtractedText(awb ?? '');
+            setExtractedHawb(hawb ?? '');
+            setIsProcessing(false);
+            setMessageLoading('');
         } else {
             setExtractedText('');
-            Alert.alert('AWB Not Found', 'Unable to detect AWB number');
+            setExtractedHawb('');
+            
+            setIsProcessing(true);
+            setMessageLoading("Extracting via AI service...");
+
+            sendAwb(imageUri)
+              .then(res => {
+                if (res?.success) {
+                  setExtractedText(res.data?.awb_no || '');
+                  setExtractedHawb(res.data?.hawb_no || '');
+                } else {
+                  console.warn("Extract failed", res);
+                }
+              })
+              .catch(err => {
+                console.error(err.response?.data || err.message);
+              })
+              .finally(() => {
+                setIsProcessing(false);
+                setMessageLoading('');
+              });
+            
         }
 
         console.log('📦 AWB:', awb);
     } catch (error) {
         console.error(error);
-        Alert.alert('OCR Error', 'Failed to extract text');
-    } finally {
         setIsProcessing(false);
-    }
+        Alert.alert('OCR Error', 'Failed to extract text');
+    } 
 };
 
 
@@ -491,6 +525,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                     input: {
                         airwaybill_number: extractedText.trim(),
                         photo_airwaybill: imagePath,
+                        hawb: extractedHawb.trim(),
                     },
                 },
             });
@@ -726,8 +761,34 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                 </View>
                                 {isProcessing && (
                                     <View style={styles.processingContainer}>
-                                        <ActivityIndicator size="small" color={COLORS.primary} />
-                                        <Text style={styles.processingText}>Extracting text...</Text>
+                                        <Text style={styles.processingText}>{messageLoading}</Text>
+                                    </View>
+                                )}
+                            </View>
+                            <View style={styles.formContainer}>
+                                <Text style={styles.formLabel}>HAWB Number</Text>
+                                <View style={styles.inputContainer}>
+                                    <TextInput
+                                        style={styles.textInput}
+                                        value={extractedHawb}
+                                        onChangeText={setExtractedHawb}
+                                        placeholder="Enter AWB number"
+                                        placeholderTextColor={COLORS.textSecondary}
+                                        editable={!isProcessing}
+                                    />
+                                    {extractedText && (
+                                        <TouchableOpacity onPress={copyToClipboard} style={styles.copyButton}>
+                                            {copied ? (
+                                                <Check stroke={COLORS.success} width={20} height={20} />
+                                            ) : (
+                                                <Copy stroke={COLORS.primary} width={20} height={20} />
+                                            )}
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+                                {isProcessing && (
+                                    <View style={styles.processingContainer}>
+                                        <Text style={styles.processingText}>{messageLoading}</Text>
                                     </View>
                                 )}
                             </View>

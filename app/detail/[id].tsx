@@ -9,7 +9,7 @@ import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, Tou
 // GraphQL query for AWB detail
 const GET_AWB_DETAIL = gql`
   query GetAirwaybillXrayWithDetails($id: ID!) {
-    airwaybillXrayWithDetails(id: $id) {
+    airwaybillxray(id: $id) {
       id
       airwaybill_number
       photo_airwaybill
@@ -401,6 +401,7 @@ const DetailScreen = () => {
   const [airwaybillPhotoLoading, setAirwaybillPhotoLoading] = useState(false);
 
   // GraphQL query for AWB detail
+ 
   const {
     data,
     loading: graphQLLoading,
@@ -411,9 +412,9 @@ const DetailScreen = () => {
     fetchPolicy: 'network-only',
   });
 
-  const awbData = data?.airwaybillXrayWithDetails;
+  const awbData = data?.airwaybillxray;
   const baseUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.replace('/api', '/storage');
-
+ console.log('data:', data);
   const xrayPhotos = awbData?.airwaybillXrayDetails?.map((detail: any) => {
     const photoPath = detail.xray_photo;
     if (photoPath && !photoPath.startsWith('http')) {
