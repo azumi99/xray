@@ -1,5 +1,6 @@
+import { useThemeStore } from '@/lib/store/themeStore';
 import React from 'react';
-import { TextInput, View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, TextInput, View } from 'react-native';
 
 interface InputProps {
   label?: string;
@@ -20,21 +21,27 @@ const GluestackInput: React.FC<InputProps> = ({
   secureTextEntry = false,
   className
 }) => {
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
   return (
     <View style={[styles.container, className ? getStyleFromClassName(className) : {}]}>
       {label && (
-        <Text style={styles.label}>
+        <Text style={[styles.label, { color: isDark ? '#9CA3AF' : '#374151' }]}>
           {label}
         </Text>
       )}
-      <View style={[styles.inputContainer, error ? styles.errorBorder : {}]}>
+      <View style={[styles.inputContainer, { 
+          backgroundColor: isDark ? '#1F2937' : '#F9FAFB',
+          borderColor: isDark ? '#374151' : '#D1D5DB' 
+        }, error ? styles.errorBorder : {}]}>
         <TextInput
-          style={styles.input}
+          style={[styles.input, { color: isDark ? '#F9FAFB' : '#1F2937' }]}
           placeholder={placeholder}
           value={value}
           onChangeText={onChangeText}
           secureTextEntry={secureTextEntry}
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={isDark ? '#4B5563' : '#9CA3AF'}
         />
       </View>
       {error && (

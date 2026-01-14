@@ -1,7 +1,9 @@
+import { Box, HStack, VStack } from '@gluestack-ui/themed';
+import { LinearGradient } from 'expo-linear-gradient';
+import { LucideIcon, PackageSearchIcon } from 'lucide-react-native';
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { Box, VStack, HStack, LinearGradient } from '@gluestack-ui/themed';
-import { PackageSearchIcon, SearchIcon, PackageIcon, LucideIcon } from 'lucide-react-native';
+import { StyleSheet, Text } from 'react-native';
+import { useThemeStore } from '../lib/store/themeStore';
 
 interface EmptyStateProps {
   title: string;
@@ -11,6 +13,8 @@ interface EmptyStateProps {
 
 const EmptyState = ({ title, subtitle, icon = PackageSearchIcon }: EmptyStateProps) => {
   const IconComponent = icon;
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
 
   return (
     <VStack
@@ -26,34 +30,32 @@ const EmptyState = ({ title, subtitle, icon = PackageSearchIcon }: EmptyStatePro
         style={styles.iconContainer}
       >
         <LinearGradient
-          colors={['#F0F9FF', '#E0F2FE']}
+          colors={isDark ? ['#1F2937', '#111827'] : ['#F0F9FF', '#E0F2FE']}
           style={styles.gradientCircle}
         />
         <Box
-          style={styles.iconWrapper}
-          bg="$background0"
+          style={[styles.iconWrapper, isDark && styles.iconWrapperDark]}
+          bg={isDark ? '$backgroundDark800' : '$background0'}
         >
-          <IconComponent size={48} color="#0284C7" />
+          <IconComponent size={48} color={isDark ? '#3B82F6' : '#0284C7'} />
         </Box>
       </Box>
 
       {/* Text Content */}
       <VStack alignItems="center" space="sm" maxW="$80">
         <Text
-          fontSize="$2xl"
-          fontWeight="$bold"
-          textAlign="center"
-          color="$text0"
-          lineHeight="$2xl"
+          style={[
+            styles.titleText,
+            { color: isDark ? '#F9FAFB' : '#111827' }
+          ]}
         >
           {title}
         </Text>
         <Text
-          fontSize="$md"
-          textAlign="center"
-          color="$text400"
-          lineHeight="$lg"
-          style={styles.subtitle}
+          style={[
+            styles.subtitle,
+            { color: isDark ? '#9CA3AF' : '#6B7280' }
+          ]}
         >
           {subtitle}
         </Text>
@@ -61,9 +63,9 @@ const EmptyState = ({ title, subtitle, icon = PackageSearchIcon }: EmptyStatePro
 
       {/* Decorative Elements */}
       <HStack space="sm" mt="$6" opacity={0.6}>
-        <Box w="$2" h="$2" borderRadius="$full" bg="$primary300" />
-        <Box w="$2" h="$2" borderRadius="$full" bg="$primary400" />
-        <Box w="$2" h="$2" borderRadius="$full" bg="$primary600" />
+        <Box w="$2" h="$2" borderRadius="$full" bg={isDark ? "$blue400" : "$primary300"} />
+        <Box w="$2" h="$2" borderRadius="$full" bg={isDark ? "$blue500" : "$primary400"} />
+        <Box w="$2" h="$2" borderRadius="$full" bg={isDark ? "$blue600" : "$primary600"} />
       </HStack>
     </VStack>
   );
@@ -93,7 +95,20 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  iconWrapperDark: {
+    shadowOpacity: 0.3,
+    backgroundColor: '#1F2937'
+  },
+  titleText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    lineHeight: 32,
+  },
   subtitle: {
+    fontSize: 16,
+    textAlign: 'center',
+    lineHeight: 24,
     letterSpacing: 0.2,
   },
 });

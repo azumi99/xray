@@ -26,7 +26,6 @@ import { useAuth } from '../lib/store/auth';
 interface WatchedFile {
     id: string;
     filepath: string;
-    link: string;
     assign_id: string | null;
     created_at: string;
 }
@@ -177,7 +176,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             .filter(file => !xrayImages.some(img => img.id === file.id))
             .map(file => ({
                 id: file.id,
-                uri: file.link,
+                uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
                 status: 'success' as const,
                 uploadedPath: file.filepath,
             }));

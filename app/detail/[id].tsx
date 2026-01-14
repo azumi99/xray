@@ -1,4 +1,5 @@
 import { useAuth } from '@/lib/store/auth';
+import { useThemeStore } from '@/lib/store/themeStore';
 import { gql, useQuery } from '@apollo/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
@@ -108,6 +109,8 @@ const DetailScreen = () => {
   const params = useLocalSearchParams();
   const { id } = params;
   const { session } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
   const [selectedPhoto, setSelectedPhoto] = useState<string | null>(null);
   const [photoLoading, setPhotoLoading] = useState<{ [key: number]: boolean }>({});
@@ -189,21 +192,21 @@ const DetailScreen = () => {
   // Loading state
   if (graphQLLoading || (!data && isValidId)) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FAFAFA' }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ 
             width: 48, 
             height: 48, 
             borderRadius: 24, 
-            backgroundColor: '#f3f6f9', 
+            backgroundColor: isDark ? '#1F2937' : '#f3f6f9', 
             alignItems: 'center', 
-            justifyContent: 'center',
+            justifyContent: 'center', 
             marginBottom: 16
           }}>
             <Package size={24} color={COLORS.primary} />
           </View>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 }}>Loading Details</Text>
-          <Text style={{ fontSize: 13, color: '#6b7280' }}>Please wait a moment...</Text>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 4 }}>Loading Details</Text>
+          <Text style={{ fontSize: 13, color: isDark ? '#9CA3AF' : '#6b7280' }}>Please wait a moment...</Text>
         </View>
       </View>
     );
@@ -212,21 +215,21 @@ const DetailScreen = () => {
   // Error state
   if (error) {
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FAFAFA' }]}>
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
           <View style={{ 
             width: 48, 
             height: 48, 
             borderRadius: 24, 
-            backgroundColor: '#fef2f2', 
+            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.2)' : '#fef2f2', 
             alignItems: 'center', 
-            justifyContent: 'center',
+            justifyContent: 'center', 
             marginBottom: 16
           }}>
             <X size={24} color="#ef4444" />
           </View>
-          <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 }}>Unable to Load</Text>
-          <Text style={{ fontSize: 13, color: '#6b7280' }}>{error.message}</Text>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 4 }}>Unable to Load</Text>
+          <Text style={{ fontSize: 13, color: isDark ? '#9CA3AF' : '#6b7280' }}>{error.message}</Text>
         </View>
       </View>
     );
@@ -306,7 +309,7 @@ const DetailScreen = () => {
 
   // Render main content
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FAFAFA' }]}>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
@@ -321,12 +324,12 @@ const DetailScreen = () => {
             <View style={{ 
               flexDirection: 'row', 
               alignItems: 'center', 
-              backgroundColor: '#f0fdf4', 
+              backgroundColor: isDark ? 'rgba(22, 163, 74, 0.2)' : '#f0fdf4', 
               paddingHorizontal: 12, 
               paddingVertical: 4, 
               borderRadius: 9999,
               borderWidth: 1,
-              borderColor: '#dcfce7'
+              borderColor: isDark ? 'rgba(22, 163, 74, 0.4)' : '#dcfce7'
             }}>
               <CheckCircle size={14} color="#16a34a" style={{ marginRight: 6 }} />
               <Text style={{ fontSize: 12, fontWeight: '600', color: '#16a34a' }}>Completed</Text>
@@ -335,7 +338,7 @@ const DetailScreen = () => {
 
           {/* Air Cargo Card */}
           <View style={{ 
-            backgroundColor: '#ffffff', 
+            backgroundColor: isDark ? '#1F2937' : '#ffffff', 
             borderRadius: 24, 
             padding: 24, 
             shadowColor: '#000', 
@@ -344,7 +347,7 @@ const DetailScreen = () => {
             shadowRadius: 20, 
             elevation: 4,
             borderWidth: 1,
-            borderColor: '#f9fafb',
+            borderColor: isDark ? '#374151' : '#f9fafb',
             overflow: 'hidden',
             position: 'relative'
           }}>
@@ -356,7 +359,7 @@ const DetailScreen = () => {
                width: 160,
                height: 160,
                borderRadius: 80,
-               backgroundColor: '#eff6ff',
+               backgroundColor: isDark ? '#374151' : '#eff6ff',
                opacity: 0.5
              }} />
              
@@ -367,7 +370,7 @@ const DetailScreen = () => {
                    height: 32, 
                    alignItems: 'center', 
                    justifyContent: 'center', 
-                   backgroundColor: '#eff6ff', 
+                   backgroundColor: isDark ? 'rgba(0, 136, 221, 0.2)' : '#eff6ff', 
                    borderRadius: 16 
                  }}>
                    <Plane size={18} color="#0088dd" />
@@ -383,7 +386,7 @@ const DetailScreen = () => {
                      Master AWB (MAWB)
                    </Text>
                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                     <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', letterSpacing: -0.5 }}>
+                     <Text style={{ fontSize: 24, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827', letterSpacing: -0.5 }}>
                        {awbData?.airwaybill_number || '---'}
                      </Text>
                      <TouchableOpacity 
@@ -397,14 +400,14 @@ const DetailScreen = () => {
                    </View>
                  </View>
 
-                 <View style={{ height: 1, backgroundColor: '#f3f4f6', width: '100%' }} />
+                 <View style={{ height: 1, backgroundColor: isDark ? '#374151' : '#f3f4f6', width: '100%' }} />
 
                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
                    <View>
                      <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 4 }}>
                        House AWB (HAWB)
                      </Text>
-                     <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
+                     <Text style={{ fontSize: 18, fontWeight: '600', color: isDark ? '#D1D5DB' : '#1f2937' }}>
                        {awbData?.hawb || '---'}
                      </Text>
                    </View>
@@ -412,7 +415,7 @@ const DetailScreen = () => {
                      <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 4 }}>
                        Created
                      </Text>
-                     <Text style={{ fontSize: 14, fontWeight: '500', color: '#4b5563' }}>
+                     <Text style={{ fontSize: 14, fontWeight: '500', color: isDark ? '#9CA3AF' : '#4b5563' }}>
                        {awbData?.created_at ? new Date(awbData.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}, {awbData?.created_at ? new Date(awbData.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
                      </Text>
                    </View>
@@ -425,8 +428,8 @@ const DetailScreen = () => {
         {/* Photos Section */}
         <View style={{ gap: 16, marginBottom: 32 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Photos</Text>
-            <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>Photos</Text>
+            <View style={{ backgroundColor: isDark ? '#374151' : '#f3f4f6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 }}>
               <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                 {awbData?.photo_airwaybill ? '1' : '0'} of 1
               </Text>
@@ -509,9 +512,9 @@ const DetailScreen = () => {
                width: '100%', 
                aspectRatio: 1.6, 
                borderRadius: 24, 
-               backgroundColor: '#f9fafb',
+               backgroundColor: isDark ? '#1F2937' : '#f9fafb',
                borderWidth: 1,
-               borderColor: '#f3f4f6',
+               borderColor: isDark ? '#374151' : '#f3f4f6',
                alignItems: 'center',
                justifyContent: 'center'
             }}>
@@ -524,7 +527,7 @@ const DetailScreen = () => {
         {/* X-Ray Scan Section */}
         <View style={{ gap: 16 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
-            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>X-Ray Scan</Text>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>X-Ray Scan</Text>
           </View>
 
           {xrayPhotos.length === 0 ? (
@@ -532,22 +535,22 @@ const DetailScreen = () => {
               padding: 40, 
               alignItems: 'center', 
               justifyContent: 'center', 
-              backgroundColor: 'rgba(249, 250, 251, 0.5)', 
+              backgroundColor: isDark ? 'rgba(55, 65, 81, 0.5)' : 'rgba(249, 250, 251, 0.5)', 
               borderRadius: 24, 
               borderWidth: 1, 
-              borderColor: '#e5e7eb', 
+              borderColor: isDark ? '#4B5563' : '#e5e7eb', 
               borderStyle: 'dashed' 
             }}>
               <View style={{ 
                 width: 56, 
                 height: 56, 
                 borderRadius: 28, 
-                backgroundColor: '#ffffff', 
+                backgroundColor: isDark ? '#1F2937' : '#ffffff', 
                 alignItems: 'center', 
                 justifyContent: 'center', 
                 marginBottom: 16,
                 borderWidth: 1,
-                borderColor: '#f3f4f6',
+                borderColor: isDark ? '#374151' : '#f3f4f6',
                 shadowColor: '#000',
                 shadowOffset: { width: 0, height: 2 },
                 shadowOpacity: 0.03,
@@ -556,7 +559,7 @@ const DetailScreen = () => {
               }}>
                 <Scan size={28} color="#d1d5db" strokeWidth={1.5} />
               </View>
-              <Text style={{ fontSize: 14, fontWeight: '500', color: '#111827', marginBottom: 4 }}>No Scans Yet</Text>
+              <Text style={{ fontSize: 14, fontWeight: '500', color: isDark ? '#F9FAFB' : '#111827', marginBottom: 4 }}>No Scans Yet</Text>
               <Text style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', maxWidth: 200, lineHeight: 18, marginBottom: 24 }}>
                 Awaiting inspection team upload.
               </Text>

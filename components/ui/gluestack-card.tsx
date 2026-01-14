@@ -1,5 +1,6 @@
+import { useThemeStore } from '@/lib/store/themeStore';
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 interface CardProps {
   children: React.ReactNode;
@@ -14,12 +15,15 @@ const GluestackCard: React.FC<CardProps> = ({
   subtitle,
   className 
 }) => {
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+  
   return (
-    <View style={[styles.card, className ? getStyleFromClassName(className) : {}]}>
+    <View style={[styles.card, { backgroundColor: isDark ? '#1F2937' : '#ffffff' }, className ? getStyleFromClassName(className) : {}]}>
       {(title || subtitle) && (
         <View style={styles.header}>
-          {title && <Text style={styles.title}>{title}</Text>}
-          {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+          {title && <Text style={[styles.title, { color: isDark ? '#F9FAFB' : '#1f2937' }]}>{title}</Text>}
+          {subtitle && <Text style={[styles.subtitle, { color: isDark ? '#9CA3AF' : '#6b7280' }]}>{subtitle}</Text>}
         </View>
       )}
       <View style={styles.content}>
@@ -41,14 +45,20 @@ const GluestackCardTitle: React.FC<{ children: React.ReactNode, className?: stri
   children,
   className 
 }) => {
-  return <Text style={[styles.title, className ? getStyleFromClassName(className) : {}]}>{children}</Text>;
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
+  return <Text style={[styles.title, { color: isDark ? '#F9FAFB' : '#1f2937' }, className ? getStyleFromClassName(className) : {}]}>{children}</Text>;
 };
 
 const GluestackCardDescription: React.FC<{ children: React.ReactNode, className?: string }> = ({ 
   children,
   className 
 }) => {
-  return <Text style={[styles.subtitle, className ? getStyleFromClassName(className) : {}]}>{children}</Text>;
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
+  return <Text style={[styles.subtitle, { color: isDark ? '#9CA3AF' : '#6b7280' }, className ? getStyleFromClassName(className) : {}]}>{children}</Text>;
 };
 
 const styles = StyleSheet.create({
@@ -105,11 +115,7 @@ const getStyleFromClassName = (className: string): any => {
 };
 
 export {
-  GluestackCard,
-  GluestackCardHeader,
-  GluestackCardContent,
-  GluestackCardTitle,
-  GluestackCardDescription
+    GluestackCard, GluestackCardContent, GluestackCardDescription, GluestackCardHeader, GluestackCardTitle
 };
 
 export default GluestackCard;
