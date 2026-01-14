@@ -1,10 +1,11 @@
-import { Badge, Box, HStack } from '@gluestack-ui/themed';
+import { Box, HStack } from '@gluestack-ui/themed';
 import { CalendarIcon, ChevronRightIcon, PackageIcon } from 'lucide-react-native';
 import React from 'react';
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface AwbListItemProps {
   awbNumber: string;
+  hawb: string;
   date: string;
   onPress: () => void;
   onDelete?: () => void;
@@ -17,6 +18,7 @@ interface AwbListItemProps {
 
 const AwbListItem = ({
   awbNumber,
+  hawb,
   date,
   onPress,
   onDelete,
@@ -26,104 +28,93 @@ const AwbListItem = ({
   const getStatusConfig = () => {
     switch (status) {
       case 'new':
-        return { label: 'NEW', bg: '$primary100', color: '$primary600' };
+        return { label: 'NEW', bg: '#E0F2FE', color: '#0284C7' }; // Blue-50/Blue-600
       case 'processing':
-        return { label: 'IN PROGRESS', bg: '$warning100', color: '$warning600' };
+        return { label: 'PROCESSING', bg: '#FFF7ED', color: '#EA580C' }; // Orange
       case 'completed':
-        return { label: 'COMPLETED', bg: '$success100', color: '$success600' };
+        return { label: 'COMPLETED', bg: '#F0FDF4', color: '#16A34A' }; // Green
       default:
-        return { label: 'NEW', bg: '$primary100', color: '$primary600' };
+        return { label: 'NEW', bg: '#E0F2FE', color: '#0284C7' };
     }
   };
 
   const statusConfig = getStatusConfig();
 
-  // const renderHiddenItem = () => (
-  //   <View style={styles.rowBack}>
-  //     <TouchableOpacity
-  //       style={[styles.backRightBtn, styles.backRightBtnRight]}
-  //       onPress={onDelete}
-  //     >
-  //       {/* <Trash2Icon size={20} color="#FFFFFF" /> */}
-  //       <Text style={styles.backTextWhite}>Delete</Text>
-  //     </TouchableOpacity>
-  //   </View>
-  // );
-
   return (
     <View style={styles.container}>
-      {/* Hidden Delete Button */}
-      {/* {renderHiddenItem()} */}
-
-      {/* Main Content */}
       <TouchableOpacity
         onPress={onPress}
-        activeOpacity={0.8}
+        activeOpacity={0.9}
         style={styles.frontVisible}
       >
         <Box
           bg="$white"
-          borderRadius="$2xl"
-          p="$5"
-          shadowColor="$backgroundLight500"
-          shadowOffset={{ width: 0, height: 4 }}
-          shadowOpacity={0.1}
-          shadowRadius={8}
-          borderWidth={1}
-          borderColor="$borderLight100"
+          borderRadius={20}
+          p="$4"
+          style={{ gap: 12 }}
         >
-          <HStack justifyContent="space-between" alignItems="flex-start">
-            {/* Left Content */}
-            <View style={{ flex: 1, marginRight: 12 }}>
-              <HStack alignItems="center" space="sm" mb="sm">
-                <Box
-                  w="$10"
-                  h="$10"
-                  borderRadius="$lg"
-                  bg="$primary50"
-                  alignItems="center"
-                  justifyContent="center"
-                >
-                  <PackageIcon size={20} color="#0284C7" />
-                </Box>
-                <Text
-                  fontWeight="bold"
-                  fontSize="$lg"
-                  color="$text900"
-                  numberOfLines={1}
-                  style={{ flexShrink: 1 }}
-                >
-                  {awbNumber}
-                </Text>
-              </HStack>
-
-              {/* Additional information */}
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <CalendarIcon size={12} color="#9CA3AF" />
-                <Text style={{ fontSize: 12, color: '#9CA3AF', marginLeft: 6 }}>
-                  {date}
-                </Text>
-              </View>
-            </View>
-
-            {/* Right Content */}
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Badge
-                bg={statusConfig.bg}
-                px="$3"
-                py="$1"
-                borderRadius="$full"
+          {/* Header Row: Label + Status */}
+          <HStack justifyContent="space-between" alignItems="center">
+            <Text style={{ fontSize: 10, color: '#9CA3AF', fontWeight: '700', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+              MASTER AWB
+            </Text>
+            <Box
+              bg={statusConfig.bg}
+              px="$2.5"
+              py="$1"
+              borderRadius="$lg"
+            >
+              <Text
+                style={{
+                  fontSize: 10,
+                  fontWeight: '700',
+                  color: statusConfig.color,
+                  textTransform: 'uppercase'
+                }}
               >
-                <Text
-                  fontSize="$xs"
-                  fontWeight="600"
-                  color={statusConfig.color}
-                >
-                  {statusConfig.label}
-                </Text>
-              </Badge>
-              <ChevronRightIcon size={18} color="#D1D5DB" />
-            </View>
+                {statusConfig.label}
+              </Text>
+            </Box>
+          </HStack>
+
+          {/* AWB Number */}
+          <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827', marginTop: -4 }}>
+            {awbNumber}
+          </Text>
+
+          {/* HAWB Box (Placeholder/Conditional) */}
+          <Box
+            bg="#F9FAFB"
+            borderRadius="$lg"
+            p="$3"
+            flexDirection="row"
+            alignItems="center"
+            justifyContent="space-between"
+          >
+             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                <PackageIcon size={16} color="#9CA3AF" />
+                <View>
+                   <Text style={{ fontSize: 10, color: '#9CA3AF', fontWeight: '600' }}>HAWB Number</Text>
+                   <Text style={{ fontSize: 14, color: '#374151', fontWeight: '600' }}>{hawb}</Text>
+                </View>
+             </View>
+             <TouchableOpacity>
+               <View style={{ padding: 4 }}>
+                  <Text style={{ fontSize: 16, color: '#D1D5DB' }}>❑</Text> 
+                  {/* Using unicode for copy icon roughly or Lucide if available in import */}
+               </View>
+             </TouchableOpacity>
+          </Box>
+
+          {/* Footer Row: Date + Arrow */}
+          <HStack justifyContent="space-between" alignItems="center" mt="$1">
+             <HStack alignItems="center" space="xs">
+               <CalendarIcon size={14} color="#9CA3AF" />
+               <Text style={{ fontSize: 12, color: '#6B7280', fontWeight: '500' }}>
+                 {date}
+               </Text>
+             </HStack>
+             <ChevronRightIcon size={18} color="#9CA3AF" />
           </HStack>
         </Box>
       </TouchableOpacity>

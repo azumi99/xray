@@ -2,9 +2,9 @@ import { useAuth } from '@/lib/store/auth';
 import { gql, useQuery } from '@apollo/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
-import { Calendar, Camera, CheckCircle, Image as ImageIcon, Package, Search, X } from 'lucide-react-native';
+import { Camera, CheckCircle, Copy, Maximize2, Package, Plane, Plus, Scan, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 // GraphQL query for AWB detail
 const GET_AWB_DETAIL = gql`
@@ -13,6 +13,7 @@ const GET_AWB_DETAIL = gql`
       id
       airwaybill_number
       photo_airwaybill
+      hawb
       created_at
       xray_photos_count
       airwaybillXrayDetails {
@@ -25,335 +26,48 @@ const GET_AWB_DETAIL = gql`
   }
 `;
 
-// Clean design system - matching tabs/index theme
+// Clean design system - using new palette from request
 const COLORS = {
-  primary: '#0284C7',
-  primaryDark: '#0369A1',
-  primaryLight: '#0EA5E9',
-  success: '#10B981',
-  background: '#FFFFFF',
-  surface: '#FFFFFF',
-  text: {
-    primary: '#0F172A',
-    secondary: '#475569',
-    tertiary: '#64748B',
-    inverse: '#FFFFFF'
+  primary: '#0088dd',
+  primaryDark: '#0066aa',
+  secondary: '#f3f6f9',
+  surface: {
+    light: '#ffffff',
+    dark: '#1f2937',
   },
-  border: '#F1F5F9',
-  shadow: 'rgba(0, 0, 0, 0.03)'
+  text: {
+    primary: '#1f2937',
+    secondary: '#6b7280',
+    light: '#9ca3af',
+  },
+  success: {
+    bg: '#f0fdf4',
+    text: '#16a34a',
+    border: '#dcfce7',
+  }
 };
 
 const SPACING = {
   xs: 4,
   sm: 12,
   md: 20,
-  lg: 28,
-  xl: 36
+  lg: 24,
+  xl: 32
 };
 
 const BORDER_RADIUS = {
-  sm: 10,
-  md: 14,
-  lg: 18,
+  sm: 8,
+  md: 12,
+  lg: 24, // 1.5rem / 3xl
   full: 9999
 };
 
-// Clean component styles
+// Styles for modal mostly, others handled by Tailwind
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#FAFAFA', // Light bg
   },
-  scrollView: {
-    flex: 1,
-    width: '100%',
-  },
-  scrollContent: {
-    padding: SPACING.sm,
-    paddingBottom: SPACING.lg,
-    flexGrow: 1,
-  },
-  // Status indicator
-  statusContainer: {
-    alignItems: 'center',
-    marginBottom: SPACING.md,
-  },
-  statusChip: {
-    backgroundColor: COLORS.success,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  chipText: {
-    color: COLORS.text.inverse,
-    fontWeight: '500',
-    fontSize: 12,
-  },
-  // Clean card design
-  card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  // Main info card
-  heroCard: {
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    overflow: 'hidden',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  avatar: {
-    width: 50,
-    height: 50,
-    borderRadius: BORDER_RADIUS.sm,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: SPACING.sm,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  awbNumber: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: COLORS.text.inverse,
-    marginBottom: 2,
-  },
-  awbLabel: {
-    fontSize: 13,
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-    marginVertical: SPACING.sm,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: SPACING.xs,
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.9)',
-    fontWeight: '400',
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: 'rgba(255, 255, 255, 0.7)',
-    marginRight: SPACING.xs,
-    minWidth: 60,
-  },
-  // Section styles
-  section: {
-    marginBottom: SPACING.xs,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: COLORS.text.primary,
-  },
-  // Photo containers
-  photoContainer: {
-    borderRadius: BORDER_RADIUS.sm,
-    overflow: 'hidden',
-    backgroundColor: '#F8FAFA',
-  },
-  photoPreview: {
-    width: '100%',
-    height: 180,
-    resizeMode: 'cover',
-  },
-  // Photo grid
-  photoGrid: {
-    flexDirection: 'row',
-    gap: SPACING.xs,
-  },
-  photoItem: {
-    width: 100,
-    height: 100,
-    borderRadius: BORDER_RADIUS.sm,
-    overflow: 'hidden',
-    backgroundColor: '#F8FAFA',
-  },
-  photoThumbnail: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  // Empty states
-  emptyContainer: {
-    alignItems: 'center',
-    padding: SPACING.lg,
-  },
-  emptyIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: '#F8FAFA',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: SPACING.sm,
-  },
-  emptyTitle: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: COLORS.text.primary,
-    marginBottom: SPACING.xs,
-    textAlign: 'center',
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: COLORS.text.secondary,
-    textAlign: 'center',
-  },
-  // Modal styles
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
-  modalContainer: {
-    width: '90%',
-    maxHeight: '80%',
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  modalImage: {
-    width: '100%',
-    height: undefined,
-    aspectRatio: 1,
-    resizeMode: 'contain',
-  },
-  modalCloseButton: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Photo components
-  photoSection: {
-    marginBottom: SPACING.sm,
-  },
-  photoHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
-  },
-  photoCount: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.full,
-    minWidth: 24,
-    alignItems: 'center',
-  },
-  photoCountText: {
-    color: COLORS.text.inverse,
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  // Photo item styles as card UI
-  photoItemModern: {
-    width: 90,
-    height: 90,
-    borderRadius: BORDER_RADIUS.md,
-    overflow: 'hidden',
-    backgroundColor: COLORS.surface,
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  photoNumber: {
-    position: 'absolute',
-    top: SPACING.xs,
-    left: SPACING.xs,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  photoNumberText: {
-    color: COLORS.text.inverse,
-    fontSize: 10,
-    fontWeight: '500',
-  },
-  // Main photo container as card UI
-  heroPhotoContainer: {
-    width: '100%',
-    height: 160,
-    borderRadius: BORDER_RADIUS.lg,
-    overflow: 'hidden',
-    backgroundColor: COLORS.surface,
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  heroPhoto: {
-    width: '100%',
-    height: '100%',
-  },
-  heroPhotoLoading: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  // Modal styles
   modalOverlay: {
     position: 'absolute',
     top: 0,
@@ -366,27 +80,27 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   modalContent: {
-    width: '90%',
-    maxHeight: '80%',
-    borderRadius: BORDER_RADIUS.sm,
-    overflow: 'hidden',
+    width: '100%',
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalImage: {
-    width: '100%',
-    height: undefined,
-    aspectRatio: 1,
+    width: Dimensions.get('window').width,
+    height: Dimensions.get('window').height,
     resizeMode: 'contain',
   },
   modalCloseBtn: {
     position: 'absolute',
-    top: SPACING.sm,
-    right: SPACING.sm,
-    width: 36,
-    height: 36,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    top: 40,
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+    zIndex: 1001,
   },
 });
 
@@ -439,6 +153,7 @@ const DetailScreen = () => {
       });
     });
   };
+  console.log('Image Dimensions:', awbData);
 
   useEffect(() => {
     if (awbData?.photo_airwaybill) {
@@ -459,18 +174,21 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
   if (graphQLLoading) {
     return (
       <View style={styles.container}>
-        <LinearGradient
-          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-          style={{ flex: 1 }}
-        >
-          <View style={[styles.scrollView, styles.emptyContainer]}>
-            <View style={styles.emptyIcon}>
-              <Package size={28} color={COLORS.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Loading Details</Text>
-            <Text style={styles.emptySubtitle}>Please wait a moment...</Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ 
+            width: 48, 
+            height: 48, 
+            borderRadius: 24, 
+            backgroundColor: '#f3f6f9', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            marginBottom: 16
+          }}>
+            <Package size={24} color={COLORS.primary} />
           </View>
-        </LinearGradient>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 }}>Loading Details</Text>
+          <Text style={{ fontSize: 13, color: '#6b7280' }}>Please wait a moment...</Text>
+        </View>
       </View>
     );
   }
@@ -479,18 +197,21 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
   if (error) {
     return (
       <View style={styles.container}>
-        <LinearGradient
-          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-          style={{ flex: 1 }}
-        >
-          <View style={[styles.scrollView, styles.emptyContainer]}>
-            <View style={[styles.emptyIcon, { backgroundColor: '#FEF2F2' }]}>
-              <X size={28} color="#EF4444" />
-            </View>
-            <Text style={styles.emptyTitle}>Unable to Load</Text>
-            <Text style={styles.emptySubtitle}>{error.message}</Text>
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <View style={{ 
+            width: 48, 
+            height: 48, 
+            borderRadius: 24, 
+            backgroundColor: '#fef2f2', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            marginBottom: 16
+          }}>
+            <X size={24} color="#ef4444" />
           </View>
-        </LinearGradient>
+          <Text style={{ fontSize: 16, fontWeight: '600', color: '#1f2937', marginBottom: 4 }}>Unable to Load</Text>
+          <Text style={{ fontSize: 13, color: '#6b7280' }}>{error.message}</Text>
+        </View>
       </View>
     );
   }
@@ -507,174 +228,338 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
     });
   };
 
+  // Render main content
   return (
     <View style={styles.container}>
-      <LinearGradient
-        colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: -1 }}
-      />
       <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={true}
-        alwaysBounceVertical={true}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
+        showsVerticalScrollIndicator={false}
       >
-        {/* Status Chip */}
-        <View style={styles.statusContainer}>
-          <View style={styles.statusChip}>
-            <CheckCircle size={14} color={COLORS.text.inverse} style={{ marginRight: SPACING.xs }} />
-            <Text style={styles.chipText}>Completed</Text>
+        {/* Status Section */}
+        <View style={{ gap: 16, marginBottom: 24 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 12, fontWeight: '500', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Current Status
+            </Text>
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              backgroundColor: '#f0fdf4', 
+              paddingHorizontal: 12, 
+              paddingVertical: 4, 
+              borderRadius: 9999,
+              borderWidth: 1,
+              borderColor: '#dcfce7'
+            }}>
+              <CheckCircle size={14} color="#16a34a" style={{ marginRight: 6 }} />
+              <Text style={{ fontSize: 12, fontWeight: '600', color: '#16a34a' }}>Completed</Text>
+            </View>
+          </View>
+
+          {/* Air Cargo Card */}
+          <View style={{ 
+            backgroundColor: '#ffffff', 
+            borderRadius: 24, 
+            padding: 24, 
+            shadowColor: '#000', 
+            shadowOffset: { width: 0, height: 10 }, 
+            shadowOpacity: 0.05, 
+            shadowRadius: 20, 
+            elevation: 4,
+            borderWidth: 1,
+            borderColor: '#f9fafb',
+            overflow: 'hidden',
+            position: 'relative'
+          }}>
+             {/* Background Decoration */}
+             <View style={{
+               position: 'absolute',
+               top: -48,
+               right: -48,
+               width: 160,
+               height: 160,
+               borderRadius: 80,
+               backgroundColor: '#eff6ff',
+               opacity: 0.5
+             }} />
+             
+             <View style={{ position: 'relative', zIndex: 10 }}>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+                 <View style={{ 
+                   width: 32, 
+                   height: 32, 
+                   alignItems: 'center', 
+                   justifyContent: 'center', 
+                   backgroundColor: '#eff6ff', 
+                   borderRadius: 16 
+                 }}>
+                   <Plane size={18} color="#0088dd" />
+                 </View>
+                 <Text style={{ fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5, color: '#0088dd' }}>
+                   Air Cargo
+                 </Text>
+               </View>
+
+               <View style={{ gap: 24 }}>
+                 <View>
+                   <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 6 }}>
+                     Master AWB (MAWB)
+                   </Text>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                     <Text style={{ fontSize: 24, fontWeight: '700', color: '#111827', letterSpacing: -0.5 }}>
+                       {awbData?.airwaybill_number || '---'}
+                     </Text>
+                     <TouchableOpacity 
+                       onPress={() => {
+                        // Implement copy functionality if needed
+                       }}
+                       style={{ padding: 4 }}
+                     >
+                       <Copy size={18} color="#d1d5db" />
+                     </TouchableOpacity>
+                   </View>
+                 </View>
+
+                 <View style={{ height: 1, backgroundColor: '#f3f4f6', width: '100%' }} />
+
+                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+                   <View>
+                     <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 4 }}>
+                       House AWB (HAWB)
+                     </Text>
+                     <Text style={{ fontSize: 18, fontWeight: '600', color: '#1f2937' }}>
+                       {awbData?.hawb || '---'}
+                     </Text>
+                   </View>
+                   <View style={{ alignItems: 'flex-end' }}>
+                     <Text style={{ fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, color: '#9ca3af', marginBottom: 4 }}>
+                       Created
+                     </Text>
+                     <Text style={{ fontSize: 14, fontWeight: '500', color: '#4b5563' }}>
+                       {awbData?.created_at ? new Date(awbData.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : 'N/A'}, {awbData?.created_at ? new Date(awbData.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) : ''}
+                     </Text>
+                   </View>
+                 </View>
+               </View>
+             </View>
           </View>
         </View>
 
-        {/* Main Info Card */}
-        <LinearGradient
-          colors={[COLORS.primary, COLORS.primaryDark]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroCard}
-        >
-          <View style={styles.header}>
-            <View style={styles.avatar}>
-              <Package size={24} color={COLORS.text.inverse} />
-            </View>
-            <View style={styles.headerContent}>
-              <Text style={styles.awbNumber}>{awbData?.airwaybill_number || 'N/A'}</Text>
-              <Text style={styles.awbLabel}>Airway Bill</Text>
+        {/* Photos Section */}
+        <View style={{ gap: 16, marginBottom: 32 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>Photos</Text>
+            <View style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 9999 }}>
+              <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                {awbData?.photo_airwaybill ? '1' : '0'} of 1
+              </Text>
             </View>
           </View>
 
-          <View style={styles.separator} />
-
-          <View style={styles.infoRow}>
-            <Calendar size={16} color="rgba(255, 255, 255, 0.7)" />
-            <Text style={styles.infoLabel}>Created</Text>
-            <Text style={styles.infoText}>{formatDate(awbData?.created_at)}</Text>
-          </View>
-
-          <View style={styles.infoRow}>
-            <Camera size={16} color="rgba(255, 255, 255, 0.7)" />
-            <Text style={styles.infoLabel}>Photos</Text>
-            <Text style={styles.infoText}>{awbData?.xray_photos_count || 0} X-ray</Text>
-          </View>
-        </LinearGradient>
-
-        {/* Airwaybill Photo Card */}
-        {awbData?.photo_airwaybill && (
-          <View style={[styles.card, { marginBottom: SPACING.sm }]}>
-            <View style={styles.sectionHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <ImageIcon size={16} color={COLORS.primary} style={{ marginRight: SPACING.xs }} />
-                <Text style={styles.sectionTitle}>Airwaybill Photo</Text>
-              </View>
-            </View>
-
-            <TouchableOpacity
-              style={styles.heroPhotoContainer}
+          {awbData?.photo_airwaybill ? (
+            <TouchableOpacity 
+              activeOpacity={0.9}
               onPress={() => setSelectedAirwaybillPhoto(imageUrl)}
-              activeOpacity={0.8}
-              disabled={airwaybillPhotoLoading}
+              style={{ 
+                width: '100%', 
+                aspectRatio: 1.6, 
+                borderRadius: 24, 
+                overflow: 'hidden', 
+                backgroundColor: '#e5e7eb',
+                position: 'relative',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 4 },
+                shadowOpacity: 0.05,
+                shadowRadius: 10,
+                elevation: 2,
+                borderWidth: 1,
+                borderColor: '#f3f4f6'
+              }}
             >
-              <Image
-                source={{ uri: imageUrl }}
-                style={styles.heroPhoto}
-                onLoadStart={() => setAirwaybillPhotoLoading(true)}
-                onLoadEnd={() => setAirwaybillPhotoLoading(false)}
-                resizeMode="cover"
+              <Image 
+                source={{ uri: imageUrl }} 
+                style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
               />
+              {/* Gradient Overlay */}
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.1)', 'rgba(0,0,0,0.7)']}
+                style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: '40%' }}
+              />
+              
+              {/* Expand Button */}
+              <View style={{ position: 'absolute', top: 16, right: 16 }}>
+                 <View style={{ 
+                   width: 32, 
+                   height: 32, 
+                   borderRadius: 16, 
+                   backgroundColor: 'rgba(255,255,255,0.2)', 
+                   alignItems: 'center', 
+                   justifyContent: 'center',
+                   backdropFilter: 'blur(8px)' // Note: backdropFilter not supported in pure RN, but transparency works
+                 }}>
+                   <Maximize2 size={16} color="#ffffff" />
+                 </View>
+              </View>
 
-              {/* Loading Overlay */}
-              {airwaybillPhotoLoading && (
-                <View style={styles.heroPhotoLoading}>
-                  <ActivityIndicator size="small" color={COLORS.primary} />
+              {/* Bottom Info */}
+              <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20 }}>
+                <View style={{ 
+                  alignSelf: 'flex-start',
+                  paddingHorizontal: 10, 
+                  paddingVertical: 4, 
+                  backgroundColor: 'rgba(255,255,255,0.15)', 
+                  borderRadius: 8, 
+                  marginBottom: 8,
+                  borderWidth: 1,
+                  borderColor: 'rgba(255,255,255,0.1)'
+                }}>
+                  <Text style={{ fontSize: 10, fontWeight: '700', color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                    Front View
+                  </Text>
                 </View>
-              )}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                   <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#3b82f6', alignItems: 'center', justifyContent: 'center' }}>
+                     <Text style={{ fontSize: 10, fontWeight: '700', color: '#ffffff' }}>D</Text>
+                   </View>
+                   <Text style={{ fontSize: 12, fontWeight: '500', color: 'rgba(255,255,255,0.8)' }}>
+                     Uploaded by Driver
+                   </Text>
+                </View>
+              </View>
             </TouchableOpacity>
-          </View>
-        )}
-
-        {/* X-ray Photos Card */}
-        {xrayPhotos.length > 0 && (
-          <View style={[styles.card, { marginBottom: SPACING.sm }]}>
-            <View style={styles.photoHeader}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Search size={16} color={COLORS.primary} style={{ marginRight: SPACING.xs }} />
-                <Text style={styles.sectionTitle}>X-ray Photos</Text>
-              </View>
-              <View style={styles.photoCount}>
-                <Text style={styles.photoCountText}>{xrayPhotos.length}</Text>
-              </View>
+          ) : (
+            <View style={{ 
+               width: '100%', 
+               aspectRatio: 1.6, 
+               borderRadius: 24, 
+               backgroundColor: '#f9fafb',
+               borderWidth: 1,
+               borderColor: '#f3f4f6',
+               alignItems: 'center',
+               justifyContent: 'center'
+            }}>
+              <Camera size={32} color="#d1d5db" />
+              <Text style={{ marginTop: 8, color: '#9ca3af', fontSize: 12 }}>No Cover Photo</Text>
             </View>
+          )}
+        </View>
 
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={true}
-              contentContainerStyle={{ gap: SPACING.sm, paddingHorizontal: 4 }}
+        {/* X-Ray Scan Section */}
+        <View style={{ gap: 16 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 4 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', color: '#111827' }}>X-Ray Scan</Text>
+          </View>
+
+          {xrayPhotos.length === 0 ? (
+            <View style={{ 
+              padding: 40, 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              backgroundColor: 'rgba(249, 250, 251, 0.5)', 
+              borderRadius: 24, 
+              borderWidth: 1, 
+              borderColor: '#e5e7eb', 
+              borderStyle: 'dashed' 
+            }}>
+              <View style={{ 
+                width: 56, 
+                height: 56, 
+                borderRadius: 28, 
+                backgroundColor: '#ffffff', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                marginBottom: 16,
+                borderWidth: 1,
+                borderColor: '#f3f4f6',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 2 },
+                shadowOpacity: 0.03,
+                shadowRadius: 4,
+                elevation: 2
+              }}>
+                <Scan size={28} color="#d1d5db" strokeWidth={1.5} />
+              </View>
+              <Text style={{ fontSize: 14, fontWeight: '500', color: '#111827', marginBottom: 4 }}>No Scans Yet</Text>
+              <Text style={{ fontSize: 12, color: '#9ca3af', textAlign: 'center', maxWidth: 200, lineHeight: 18, marginBottom: 24 }}>
+                Awaiting inspection team upload.
+              </Text>
+              
+              {/* <TouchableOpacity style={{ 
+                flexDirection: 'row', 
+                alignItems: 'center', 
+                gap: 6, 
+                backgroundColor: '#ffffff', 
+                paddingHorizontal: 16, 
+                paddingVertical: 10, 
+                borderRadius: 9999, 
+                borderWidth: 1, 
+                borderColor: '#e5e7eb',
+                shadowColor: '#000', 
+                shadowOffset: { width: 0, height: 2 }, 
+                shadowOpacity: 0.05, 
+                shadowRadius: 15,
+                elevation: 1
+              }}>
+                <Plus size={16} color="#0088dd" />
+                <Text style={{ fontSize: 12, fontWeight: '600', color: '#0088dd' }}>Add Scan</Text>
+              </TouchableOpacity> */}
+            </View>
+          ) : (
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ gap: 12 }}
             >
               {xrayPhotos.map((photo, index) => (
                 <TouchableOpacity
                   key={index}
-                  style={styles.photoItemModern}
                   onPress={() => setSelectedPhoto(photo)}
-                  activeOpacity={0.8}
+                  style={{
+                    width: 140,
+                    height: 140,
+                    borderRadius: 16,
+                    overflow: 'hidden',
+                    backgroundColor: '#ffffff',
+                    borderWidth: 1,
+                    borderColor: '#f3f4f6',
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.05,
+                    shadowRadius: 8,
+                    elevation: 2
+                  }}
                 >
-                  {/* Photo Number Badge */}
-                  <View style={styles.photoNumber}>
-                    <Text style={styles.photoNumberText}>{index + 1}</Text>
+                  <Image source={{ uri: photo }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                  {/* Overlay count */}
+                  <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                    <Text style={{ color: 'white', fontSize: 10, fontWeight: '600' }}>#{index + 1}</Text>
                   </View>
-
-                  {/* Loading Overlay */}
-                  {photoLoading[index] && (
-                    <View style={styles.loadingOverlay}>
-                      <ActivityIndicator size="small" color={COLORS.primary} />
-                    </View>
-                  )}
-
-                  {/* X-ray Photo */}
-                  <Image
-                    source={{ uri: photo }}
-                    style={styles.photoThumbnail}
-                    onLoadStart={() => setPhotoLoading(prev => ({ ...prev, [index]: true }))}
-                    onLoadEnd={() => setPhotoLoading(prev => ({ ...prev, [index]: false }))}
-                  />
                 </TouchableOpacity>
               ))}
+              {/* Add More Button */}
+              <TouchableOpacity style={{
+                  width: 140,
+                  height: 140,
+                  borderRadius: 16,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  backgroundColor: '#f9fafb',
+                  borderWidth: 1,
+                  borderColor: '#e5e7eb',
+                  borderStyle: 'dashed'
+              }}>
+                 <Plus size={24} color="#9ca3af" />
+                 <Text style={{ marginTop: 8, fontSize: 12, fontWeight: '500', color: '#6b7280' }}>Add Scan</Text>
+              </TouchableOpacity>
             </ScrollView>
-          </View>
-        )}
+          )}
+        </View>
 
-        {/* Empty State - No X-Ray Photos */}
-        {awbData?.photo_airwaybill && xrayPhotos.length === 0 && (
-          <View style={styles.card}>
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIcon}>
-                <Search size={24} color={COLORS.text.tertiary} />
-              </View>
-              <Text style={styles.emptyTitle}>No X-Ray Photos</Text>
-              <Text style={styles.emptySubtitle}>
-                X-ray photos will appear here once they're added
-              </Text>
-            </View>
-          </View>
-        )}
-
-        {/* Empty State - No Photos */}
-        {!awbData?.photo_airwaybill && xrayPhotos.length === 0 && (
-          <View style={styles.card}>
-            <View style={styles.emptyContainer}>
-              <View style={styles.emptyIcon}>
-                <Camera size={24} color={COLORS.text.tertiary} />
-              </View>
-              <Text style={styles.emptyTitle}>No Photos Available</Text>
-              <Text style={styles.emptySubtitle}>
-                Photos will be added to this AWB soon
-              </Text>
-            </View>
-          </View>
-        )}
+        <View style={{ height: 40 }} />
       </ScrollView>
 
-      {/* X-ray Photo Modal */}
+      {/* Modals */}
       {selectedPhoto && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity
@@ -682,27 +567,18 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
             onPress={() => setSelectedPhoto(null)}
             activeOpacity={0.9}
           >
-            <X size={20} color={COLORS.text.inverse} />
+             <X size={20} color="#ffffff" />
           </TouchableOpacity>
           <View style={styles.modalContent}>
-            <ScrollView
-              contentContainerStyle={{ flexGrow: 1 }}
-              minimumZoomScale={1}
-              maximumZoomScale={3}
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-            >
-              <Image
+            <Image
                 source={{ uri: selectedPhoto }}
                 style={styles.modalImage}
                 resizeMode="contain"
-              />
-            </ScrollView>
+             />
           </View>
         </View>
       )}
 
-      {/* Airwaybill Photo Modal */}
       {selectedAirwaybillPhoto && (
         <View style={styles.modalOverlay}>
           <TouchableOpacity
@@ -710,27 +586,20 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
             onPress={() => setSelectedAirwaybillPhoto(null)}
             activeOpacity={0.9}
           >
-            <X size={20} color={COLORS.text.inverse} />
+             <X size={20} color="#ffffff" />
           </TouchableOpacity>
           <View style={styles.modalContent}>
-            <ScrollView
-              contentContainerStyle={{ flexGrow: 1 }}
-              minimumZoomScale={1}
-              maximumZoomScale={3}
-              showsHorizontalScrollIndicator={false}
-              showsVerticalScrollIndicator={false}
-            >
-              <Image
+            <Image
                 source={{ uri: selectedAirwaybillPhoto }}
                 style={styles.modalImage}
                 resizeMode="contain"
-              />
-            </ScrollView>
+             />
           </View>
         </View>
       )}
     </View>
   );
+
 };
 
 export default DetailScreen;
