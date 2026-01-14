@@ -2,6 +2,7 @@ import EmptyState from '@/components/EmptyState';
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
 import SwipeList from '@/components/SwipeList';
 import { useAuth } from '@/lib/store/auth';
+import { useThemeStore } from '@/lib/store/themeStore';
 import { gql, useQuery } from '@apollo/client';
 import {
   Box,
@@ -69,6 +70,8 @@ const ListScreen = () => {
   const [hasMorePages, setHasMorePages] = useState(true);
 
   const { session, isLoading: authLoading } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
 
   // Calculate dynamic bottom positioning for FAB
@@ -212,9 +215,10 @@ const ListScreen = () => {
   // Loading state
   if (authLoading) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
-        <PackageIcon size={40} color="#3b82f6" />
-        <Text style={{ marginTop: 12, color: '#64748b' }}>Loading...</Text>
+      <View style={{ flex: 1, backgroundColor: isDark ? '#111827' : '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+        <Spinner size="large" color={isDark ? '#60A5FA' : '#0284C7'} />
+        {/* <PackageIcon size={40} color="#3b82f6" /> 
+        <Text style={{ marginTop: 12, color: '#64748b' }}>Loading...</Text> */}
       </View>
     );
   }
@@ -235,33 +239,29 @@ const ListScreen = () => {
 
   return (
     <View style={{ flex: 1 }}>
-      <StatusBarSafeArea>
+      
+      <StatusBarSafeArea style={{ backgroundColor: isDark ? '#1F2937' : '#FFFFFF' }}>
+        <View style={{ flex: 1, backgroundColor: isDark ? '#111827' : '#F5F7FA' }}>
           {/* Custom Header Section */}
-          <Box style={{ zIndex: 10, backgroundColor: '#3b82f6', borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}>
+          {/* Custom Header Section */}
+          <Box style={{ zIndex: 10, backgroundColor: isDark ? '#1F2937' : '#FFFFFF' }}>
                <VStack mb="$4" space="md" p="$5">
                  {/* Row: title + filter */}
                  <Box
                    flexDirection="row"
-                   alignItems="center"
+                   alignItems="flex-start"
                    justifyContent="space-between"
-                   mb="$4"
+                   mb="$2"
                  >
-                   {/* Left: icon + text */}
-                   <Box flexDirection="row" alignItems="center">
-                     <Box
-                       w="$12"
-                       h="$12"
-                       borderRadius="$xl"
-                       bg="rgba(255, 255, 255, 0.2)"
-                       alignItems="center"
-                       justifyContent="center"
-                     >
-                       <PackageIcon size={24} color="#FFFFFF" />
-                     </Box>
-                     <Text style={{ fontWeight: '800', fontSize: 24, color: '#FFFFFF', marginLeft: 12 }}>
+                   {/* Left: Title & Subtitle */}
+                   <VStack>
+                     <Text style={{ fontWeight: '800', fontSize: 28, color: isDark ? '#F9FAFB' : '#111827', letterSpacing: -0.5 }}>
                         Shipments
                      </Text>
-                   </Box>
+                     <Text style={{ fontSize: 13, color: isDark ? '#60A5FA' : '#0284C7', marginTop: 2 }}>
+                        Manage your airway bills
+                     </Text>
+                   </VStack>
  
                    {/* Right: filter button */}
                    <TouchableOpacity 
@@ -269,20 +269,20 @@ const ListScreen = () => {
                           width: 44, 
                           height: 44, 
                           borderRadius: 22, 
-                          backgroundColor: 'rgba(255, 255, 255, 0.15)', 
+                          backgroundColor: isDark ? '#374151' : '#F3F4F6', 
                           alignItems: 'center', 
                           justifyContent: 'center',
                           borderWidth: 1,
-                          borderColor: 'rgba(255, 255, 255, 0.2)'
+                          borderColor: isDark ? '#4B5563' : '#E5E7EB'
                        }}
                    >
-                       <FilterIcon size={20} color="#FFFFFF" />
+                       <FilterIcon size={20} color={isDark ? '#60A5FA' : '#0284C7'} />
                    </TouchableOpacity>
                  </Box>
  
                  {/* Search Bar */}
-                 <Box style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
-                    <SearchIcon size={20} color="rgba(255,255,255,0.7)" />
+                 <Box style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: isDark ? '#374151' : '#F9FAFB', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 4, borderWidth: 1, borderColor: isDark ? '#4B5563' : '#F3F4F6' }}>
+                    <SearchIcon size={20} color={isDark ? '#60A5FA' : '#0284C7'} />
                     <Input
                        variant="outline"
                        style={{ flex: 1, height: 44, marginLeft: 8, borderWidth: 0 }}
@@ -290,16 +290,16 @@ const ListScreen = () => {
                     >
                       <InputField 
                         placeholder="Search AWB or HAWB..." 
-                        placeholderTextColor="rgba(255,255,255,0.6)"
+                        placeholderTextColor="#9CA3AF"
                         value={searchQuery}
                         onChangeText={handleSearch}
-                        color="white"
+                        color={isDark ? '#F9FAFB' : '#1F2937'}
                         style={{ fontSize: 15 }}
                       />
                     </Input>
                     {searchQuery.length > 0 && (
                         <TouchableOpacity onPress={() => handleSearch('')}>
-                            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13 }}>Clear</Text>
+                            <Text style={{ color: "#6B7280", fontSize: 13, fontWeight: '500' }}>Clear</Text>
                         </TouchableOpacity>
                     )}
                  </Box>
@@ -326,8 +326,8 @@ const ListScreen = () => {
             {/* Subtle loading indicator for GraphQL loading */}
             {graphQLLoading && filteredAwbList.length === 0 && (
               <Box alignItems="center" py="$8">
-                  <Spinner size="small" color="$primary600" />
-                  <Text style={{ color: "#64748b", fontSize: 14, marginTop: 8 }}>Loading Shipments...</Text>
+                  <Spinner size="small" color={isDark ? "$blue400" : "$primary600"} />
+                  {/* <Text style={{ color: "#64748b", fontSize: 14, marginTop: 8 }}>Loading Shipments...</Text> */}
               </Box>
             )}
  
@@ -361,8 +361,8 @@ const ListScreen = () => {
                     }}
                   >
                     <VStack alignItems="center" space="sm">
-                      <Spinner size="small" color="$primary600" />
-                      <Text style={{ color: "#64748b", fontSize: 14 }}>Loading more...</Text>
+                      <Spinner size="small" color={isDark ? "$blue400" : "$primary600"} />
+                      {/* <Text style={{ color: "#64748b", fontSize: 14 }}>Loading more...</Text> */}
                     </VStack>
                   </Box>
                 )}
@@ -406,14 +406,15 @@ const ListScreen = () => {
               w="$12"
               h="$12"
               borderRadius="$full"
-              bg="#3b82f6"
+              bg="#0284C7"
               alignItems="center"
               justifyContent="center"
             >
-              <ArrowUpIcon size={20} color="#FFFFFF" />
+              <ArrowUpIcon size={20} color="#fff" />
             </Box>
           </TouchableOpacity>
         )}
+        </View>
       </StatusBarSafeArea>
     </View>
   );

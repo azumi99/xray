@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useThemeStore } from '@/lib/store/themeStore';
 import { useRouter } from 'expo-router';
+import { PackageIcon, ScanText, UserIcon } from 'lucide-react-native';
+import React, { useState } from 'react';
+import { StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PackageIcon, UserIcon, ScanText } from 'lucide-react-native';
 
 interface BottomNavProps {
   onAddPress?: () => void;
@@ -13,6 +14,8 @@ const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('list');
   const insets = useSafeAreaInsets();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
 
   const handleTabPress = (tab: string, route: string) => {
     setActiveTab(tab);
@@ -32,6 +35,8 @@ const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
         styles.container,
         {
           paddingBottom: Math.max(insets.bottom, 16), // Use safe area insets with minimum 16px
+          backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+          borderTopColor: isDark ? '#374151' : '#E5E7EB',
         }
       ]}
     >
@@ -44,12 +49,12 @@ const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
         >
           <PackageIcon
             size={22}
-            color={activeTab === 'list' ? '#0284C7' : '#6B7280'}
+            color={activeTab === 'list' ? (isDark ? '#60A5FA' : '#0284C7') : (isDark ? '#9CA3AF' : '#6B7280')}
           />
           <Text
             style={[
               styles.tabText,
-              activeTab === 'list' && styles.activeTabText
+              { color: activeTab === 'list' ? (isDark ? '#60A5FA' : '#0284C7') : (isDark ? '#9CA3AF' : '#6B7280') }
             ]}
           >
             List
@@ -64,12 +69,12 @@ const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
         >
           <UserIcon
             size={22}
-            color={activeTab === 'profile' ? '#0284C7' : '#6B7280'}
+            color={activeTab === 'profile' ? (isDark ? '#60A5FA' : '#0284C7') : (isDark ? '#9CA3AF' : '#6B7280')}
           />
           <Text
             style={[
               styles.tabText,
-              activeTab === 'profile' && styles.activeTabText
+              { color: activeTab === 'profile' ? (isDark ? '#60A5FA' : '#0284C7') : (isDark ? '#9CA3AF' : '#6B7280') }
             ]}
           >
             Profile
@@ -86,18 +91,20 @@ const BottomNav = ({ onAddPress, onOcrPress }: BottomNavProps) => {
         <View
           style={[
             styles.crIconContainer,
-            activeTab === 'ocr' && styles.crIconContainerActive
+            activeTab === 'ocr' && styles.crIconContainerActive,
+            { backgroundColor: activeTab === 'ocr' ? (isDark ? '#3B82F6' : '#0284C7') : (isDark ? '#1F2937' : '#FFFFFF'), borderColor: isDark ? '#3B82F6' : '#0284C7' }
           ]}
         >
           <ScanText
             size={26}
-            color={activeTab === 'ocr' ? '#FFFFFF' : '#0284C7'}
+            color={activeTab === 'ocr' ? '#FFFFFF' : (isDark ? '#60A5FA' : '#0284C7')}
           />
         </View>
         <Text
           style={[
             styles.ocrTabText,
-            activeTab === 'ocr' && styles.ocrTabTextActive
+            activeTab === 'ocr' && styles.ocrTabTextActive,
+            { color: isDark ? '#60A5FA' : '#0284C7' }
           ]}
         >
           OCR

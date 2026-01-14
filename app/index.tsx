@@ -1,21 +1,22 @@
 import { useAuth } from "@/lib/store/auth";
-import { router } from "expo-router";
-import { useEffect } from "react";
-import { Image } from "expo-image";
+import { useThemeStore } from "@/lib/store/themeStore";
 import {
-  VStack,
-  HStack,
-  Text,
-  Spinner,
   Box,
-  Center
+  HStack,
+  Spinner,
+  Text,
+  VStack
 } from "@gluestack-ui/themed";
-import { SafeAreaView } from "react-native";
-import { PackageIcon } from "lucide-react-native";
 import { LinearGradient } from 'expo-linear-gradient';
+import { router } from "expo-router";
+import { PackageIcon } from "lucide-react-native";
+import { useEffect } from "react";
+import { SafeAreaView } from "react-native";
 
 export default function SplashScreen() {
   const { session, isLoading } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
 
   console.log("session", session);
 
@@ -33,9 +34,9 @@ export default function SplashScreen() {
   // Show splash screen while loading auth state
   if (isLoading) {
     return (
-      <SafeAreaView flex={1}>
+      <SafeAreaView style={{ flex: 1 }}>
         <LinearGradient
-          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+          colors={isDark ? ['#111827', '#1F2937', '#0F172A'] : ['#E0F2FE', '#F0F9FF', '#FFFFFF']}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={{ flex: 1 }}
@@ -52,7 +53,7 @@ export default function SplashScreen() {
               w="$32"
               h="$32"
               borderRadius="$3xl"
-              bg="linear-gradient(135deg, #0284C7 0%, #0369A1 100%)"
+              bg={isDark ? "linear-gradient(135deg, #1E40AF 0%, #172554 100%)" : "linear-gradient(135deg, #0284C7 0%, #0369A1 100%)"}
               alignItems="center"
               justifyContent="center"
               shadowColor="$primary600"
@@ -69,7 +70,7 @@ export default function SplashScreen() {
               <Text
                 fontSize="$6xl"
                 fontWeight="$bold"
-                color="$text900"
+                color={isDark ? "$text50" : "$text900"}
                 textAlign="center"
                 letterSpacing={2}
               >
@@ -77,7 +78,7 @@ export default function SplashScreen() {
               </Text>
               <Text
                 fontSize="$lg"
-                color="$text500"
+                color={isDark ? "$text300" : "$text500"}
                 textAlign="center"
                 fontWeight="$medium"
                 opacity={0.9}
@@ -91,7 +92,7 @@ export default function SplashScreen() {
               <Spinner size="large" color="$primary600" />
               <Text
                 fontSize="$sm"
-                color="$text400"
+                color={isDark ? "$text400" : "$text400"}
                 textAlign="center"
                 opacity={0.8}
               >
