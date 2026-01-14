@@ -2,10 +2,11 @@ import StatusBarSafeArea from '@/components/StatusBarSafeArea';
 import { gql, useQuery } from '@apollo/client';
 import axios from 'axios';
 import { useRouter } from 'expo-router';
-import { ChevronRight, HelpCircle, Key, LogOut, Settings } from 'lucide-react-native';
+import { ChevronRight, HelpCircle, Key, LogOut, Moon, Settings, Sun } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../lib/store/auth';
+import { useThemeStore } from '../../lib/store/themeStore';
 
 // GraphQL query untuk AWB statistics
 const today = new Date().toISOString().split('T')[0];
@@ -42,6 +43,10 @@ const ProfileScreen = () => {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
   const { session, logout } = useAuth();
+  const { theme, toggleTheme } = useThemeStore();
+  
+  const isDark = theme === 'dark';
+  
   console.log('User data in ProfileScreen:', session);
 
   // GraphQL query untuk AWB statistics
@@ -151,8 +156,8 @@ const ProfileScreen = () => {
   ];
 
   return (
-    <StatusBarSafeArea>
-      <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
+    <StatusBarSafeArea style={{ backgroundColor: isDark ? '#111827' : '#f9fafb' }}>
+      <View style={{ flex: 1, backgroundColor: isDark ? '#111827' : '#f9fafb' }}>
         <ScrollView
           style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
@@ -166,13 +171,13 @@ const ProfileScreen = () => {
                 width: 100,
                 height: 100,
                 borderRadius: 50,
-                backgroundColor: '#e0f2fe',
+                backgroundColor: isDark ? '#1F2937' : '#e0f2fe',
                 alignItems: 'center',
                 justifyContent: 'center',
                 borderWidth: 1,
-                borderColor: '#e0f2fe'
+                borderColor: isDark ? '#374151' : '#e0f2fe'
               }}>
-                <Text style={{ fontSize: 36, fontWeight: '400', color: '#0284c7' }}>
+                <Text style={{ fontSize: 36, fontWeight: '400', color: isDark ? '#0284c7' : '#0284c7' }}>
                   {loading || !userInfo ? '...' :
                    userInfo?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 1) || 'A'
                   }
@@ -193,7 +198,7 @@ const ProfileScreen = () => {
             </View>
 
             {/* User Info */}
-            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827', marginBottom: 4 }}>
               {loading || !userInfo ? 'Loading...' : userInfo?.name || 'Admin User'}
             </Text>
             <Text style={{ fontSize: 13, color: '#9ca3af' }}>
@@ -203,16 +208,16 @@ const ProfileScreen = () => {
             {/* Stats */}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 32, gap: 40 }}>
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 28, fontWeight: '300', color: '#1f2937', marginBottom: 4 }}>
+                <Text style={{ fontSize: 28, fontWeight: '300', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 4 }}>
                   {awbLoading ? "..." : totalAwb.toString()}
                 </Text>
                 <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
                   TOTAL AWB
                 </Text>
               </View>
-              <View style={{ width: 1, height: 40, backgroundColor: '#f3f4f6' }} />
+              <View style={{ width: 1, height: 40, backgroundColor: isDark ? '#374151' : '#f3f4f6' }} />
               <View style={{ alignItems: 'center' }}>
-                <Text style={{ fontSize: 28, fontWeight: '300', color: '#1f2937', marginBottom: 4 }}>
+                <Text style={{ fontSize: 28, fontWeight: '300', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 4 }}>
                   {awbLoading ? "..." : completedAwb.toString()}
                 </Text>
                 <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
@@ -227,7 +232,7 @@ const ProfileScreen = () => {
             {/* General Settings */}
             <TouchableOpacity 
               style={{
-                backgroundColor: '#ffffff',
+                backgroundColor: isDark ? '#1F2937' : '#ffffff',
                 padding: 20,
                 borderRadius: 16,
                 flexDirection: 'row',
@@ -246,17 +251,55 @@ const ProfileScreen = () => {
                    <Settings size={24} color="#9ca3af" />
                 </View>
                 <View>
-                  <Text style={{ fontSize: 15, fontWeight: '500', color: '#1f2937', marginBottom: 2 }}>General Settings</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 2 }}>General Settings</Text>
                   <Text style={{ fontSize: 12, color: '#9ca3af' }}>Notifications, privacy, language</Text>
                 </View>
               </View>
               <ChevronRight size={20} color="#d1d5db" />
             </TouchableOpacity>
 
+            {/* Appearance */}
+            <TouchableOpacity 
+              style={{
+                backgroundColor: isDark ? '#1F2937' : '#ffffff',
+                padding: 20,
+                borderRadius: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.02,
+                shadowRadius: 2,
+                elevation: 1
+              }}
+              onPress={toggleTheme}
+            >
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ width: 24, alignItems: 'center' }}>
+                   {isDark ? (
+                     <Moon size={24} color={isDark ? "#9ca3af" : "#9ca3af"} />
+                   ) : (
+                     <Sun size={24} color="#9ca3af" />
+                   )}
+                </View>
+                <View>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 2 }}>Appearance</Text>
+                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>{isDark ? 'Dark Mode' : 'Light Mode'}</Text>
+                </View>
+              </View>
+              <Switch
+                value={isDark}
+                onValueChange={toggleTheme}
+                trackColor={{ false: "#d1d5db", true: "#0284c7" }}
+                thumbColor={"#f3f4f6"}
+              />
+            </TouchableOpacity>
+
             {/* Help & Support */}
             <TouchableOpacity 
               style={{
-                backgroundColor: '#ffffff',
+                backgroundColor: isDark ? '#1F2937' : '#ffffff',
                 padding: 20,
                 borderRadius: 16,
                 flexDirection: 'row',
@@ -275,7 +318,7 @@ const ProfileScreen = () => {
                    <HelpCircle size={24} color="#9ca3af" />
                 </View>
                 <View>
-                  <Text style={{ fontSize: 15, fontWeight: '500', color: '#1f2937', marginBottom: 2 }}>Help & Support</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 2 }}>Help & Support</Text>
                   <Text style={{ fontSize: 12, color: '#9ca3af' }}>FAQ, contact us</Text>
                 </View>
               </View>
@@ -284,10 +327,10 @@ const ProfileScreen = () => {
           </View>
 
           {/* Security Section */}
-          <View style={{ width: '90%', backgroundColor: '#ffffff', borderRadius: 24, padding: 24,  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 }}>
+          <View style={{ width: '90%', backgroundColor: isDark ? '#1F2937' : '#ffffff', borderRadius: 24, padding: 24,  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
                <Key size={20} color="#0088dd" fill="#0088dd" /> 
-               <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Security</Text>
+               <Text style={{ fontSize: 16, fontWeight: '600', color: isDark ? '#F9FAFB' : '#111827' }}>Security</Text>
             </View>
 
             <View style={{ gap: 20 }}>
@@ -295,12 +338,12 @@ const ProfileScreen = () => {
                 <Text style={{ fontSize: 10, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Current Password</Text>
                 <TextInput
                   style={{
-                    backgroundColor: '#f3f4f6',
+                    backgroundColor: isDark ? '#374151' : '#f3f4f6',
                     borderRadius: 12,
                     paddingHorizontal: 16,
                     paddingVertical: 14,
                     fontSize: 14,
-                    color: '#1f2937'
+                    color: isDark ? '#F9FAFB' : '#1f2937'
                   }}
                   placeholder="Enter current password"
                   value={oldPassword}
@@ -314,12 +357,12 @@ const ProfileScreen = () => {
                 <Text style={{ fontSize: 10, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>New Password</Text>
                 <TextInput
                   style={{
-                    backgroundColor: '#f3f4f6',
+                    backgroundColor: isDark ? '#374151' : '#f3f4f6',
                     borderRadius: 12,
                     paddingHorizontal: 16,
                     paddingVertical: 14,
                     fontSize: 14,
-                    color: '#1f2937'
+                    color: isDark ? '#F9FAFB' : '#1f2937'
                   }}
                   placeholder="Enter new password"
                   value={newPassword}

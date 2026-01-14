@@ -1,5 +1,8 @@
+import client from "@/graphql/client";
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import { AuthProvider, useAuth } from "@/lib/store/auth";
+import { useThemeStore } from "@/lib/store/themeStore";
+import { ApolloProvider } from "@apollo/client";
 import {
   Inter_400Regular,
   Inter_700Bold,
@@ -15,8 +18,6 @@ import {
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { ApolloProvider } from "@apollo/client";
-import client from "@/graphql/client";
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -44,6 +45,8 @@ export default function RootLayout() {
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const { session, isLoading } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
 
   console.log("app session:", session);
 
@@ -56,14 +59,14 @@ function RootLayoutNav() {
 
   return (
     <GluestackUIProvider config={config}>
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <Stack
           screenOptions={{
             headerShown: false,
             // Apply background color to ensure consistency
-            contentStyle: { backgroundColor: '#F0F9FF' },
+            contentStyle: { backgroundColor: isDark ? '#111827' : '#F0F9FF' },
             // Apply padding for consistency
-            cardStyle: { backgroundColor: '#F0F9FF' },
+            cardStyle: { backgroundColor: isDark ? '#111827' : '#F0F9FF' },
           }}
         >
           <Stack.Screen name="index" options={{ headerShown: false }} />
@@ -71,7 +74,7 @@ function RootLayoutNav() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="detail/[id]" options={{ headerShown: false }} />
         </Stack>
-        <StatusBar style="auto" />
+        <StatusBar style={isDark ? "light" : "dark"} />
       </ThemeProvider>
     </GluestackUIProvider>
   );

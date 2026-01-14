@@ -1,10 +1,11 @@
 import { login as apiLogin } from '@/lib/api/authAPI';
 import { useAuth } from '@/lib/store/auth';
+import { useThemeStore } from '@/lib/store/themeStore';
 import { Box, Button, FormControl, FormControlLabel, FormControlLabelText, HStack, Input, InputField, Link, Text, VStack } from '@gluestack-ui/themed';
 import { useRouter } from 'expo-router';
 import { EyeIcon, EyeOffIcon, UserIcon } from 'lucide-react-native';
 import React, { useState } from 'react';
-import { Alert, TouchableOpacity, Platform, KeyboardAvoidingView, ScrollView, StyleSheet, Dimensions, View } from 'react-native';
+import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const LoginScreen = () => {
@@ -14,12 +15,14 @@ const LoginScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
   const { login } = useAuth();
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
   const insets = useSafeAreaInsets();
 
   const styles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: '#F0F9FF',
+      backgroundColor: isDark ? '#111827' : '#F0F9FF',
       paddingTop: Platform.OS === 'android' ? insets.top : 0,
     },
     keyboardContainer: {
@@ -97,10 +100,10 @@ const LoginScreen = () => {
               >
                 <UserIcon size={36} color="white" />
               </Box>
-              <Text fontSize={30} fontWeight="$bold" color="$text900" style={{ marginTop: 20 }}>
+              <Text fontSize={30} fontWeight="$bold" color={isDark ? "$text50" : "$text900"} style={{ marginTop: 20 }}>
                 Welcome Back
               </Text>
-              <Text fontSize="$md" color="$text500" textAlign="center" style={{ marginTop: 8 }}>
+              <Text fontSize="$md" color={isDark ? "$text300" : "$text500"} textAlign="center" style={{ marginTop: 8 }}>
                 Sign in to your account to continue
               </Text>
             </View>
@@ -109,20 +112,22 @@ const LoginScreen = () => {
             <VStack space="md">
               <FormControl>
                 <FormControlLabel>
-                  <FormControlLabelText fontWeight="500" color="$text0">Email</FormControlLabelText>
+                  <FormControlLabelText fontWeight="500" color={isDark ? "$text50" : "$text0"}>Email</FormControlLabelText>
                 </FormControlLabel>
                 <Input
                   borderRadius="$full"
-                  borderColor="$borderLight300"
+                  borderColor={isDark ? "$borderDark700" : "$borderLight300"}
                   borderWidth={1}
                   py="sm"
                   px="md"
+                  bg={isDark ? "$backgroundDark800" : "transparent"}
                 >
                   <InputField
                     placeholder="Enter your email"
+                    placeholderTextColor={isDark ? "$text400" : "$text500"}
                     value={email}
                     onChangeText={setEmail}
-                    color="$text0"
+                    color={isDark ? "$text50" : "$text0"}
                     autoCapitalize="none"
                     keyboardType="email-address"
                   />
@@ -131,20 +136,22 @@ const LoginScreen = () => {
 
               <FormControl>
                 <FormControlLabel mb="sm">
-                  <FormControlLabelText fontWeight="500" color="$text0">Password</FormControlLabelText>
+                  <FormControlLabelText fontWeight="500" color={isDark ? "$text50" : "$text0"}>Password</FormControlLabelText>
                 </FormControlLabel>
                 <Input
                   borderRadius="$full"
-                  borderColor="$borderLight300"
+                  borderColor={isDark ? "$borderDark700" : "$borderLight300"}
                   borderWidth={1}
                   py="sm"
                   px="md"
+                   bg={isDark ? "$backgroundDark800" : "transparent"}
                 >
                   <InputField
                     placeholder="Enter your password"
+                    placeholderTextColor={isDark ? "$text400" : "$text500"}
                     value={password}
                     onChangeText={setPassword}
-                    color="$text0"
+                    color={isDark ? "$text50" : "$text0"}
                     secureTextEntry={!showPassword}
                   />
                   <TouchableOpacity
@@ -169,14 +176,14 @@ const LoginScreen = () => {
                       h="$5"
                       borderRadius="$sm"
                       borderWidth={1}
-                      borderColor="$borderLight300"
-                      bg="$background0"
+                      borderColor={isDark ? "$borderDark700" : "$borderLight300"}
+                      bg={isDark ? "$backgroundDark800" : "$background0"}
                       alignItems="center"
                       justifyContent="center"
                     >
                       {/* Checkbox would go here */}
                     </Box>
-                    <Text fontSize="$sm" color="$text700">Remember me</Text>
+                    <Text fontSize="$sm" color={isDark ? "$text300" : "$text700"}>Remember me</Text>
                   </HStack>
                 </TouchableOpacity>
 
@@ -199,7 +206,7 @@ const LoginScreen = () => {
 
               {/* Sign Up Link */}
               <HStack justifyContent="center" mt="lg">
-                <Text fontSize="$sm" color="$text500">Don't have an account? </Text>
+                <Text fontSize="$sm" color={isDark ? "$text400" : "$text500"}>Don't have an account? </Text>
                 <TouchableOpacity onPress={() => Alert.alert('Sign Up', 'Registration functionality would go here')}>
                   <Text fontSize="$sm" color="$primary600" fontWeight="600">Sign Up</Text>
                 </TouchableOpacity>

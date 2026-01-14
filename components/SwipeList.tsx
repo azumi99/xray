@@ -1,3 +1,4 @@
+import { useThemeStore } from '@/lib/store/themeStore';
 import { formatDateTime } from '@/utils/formatDate';
 import { gql, useMutation } from '@apollo/client';
 import { Trash2Icon } from 'lucide-react-native';
@@ -44,6 +45,21 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
   contentContainerStyle
 }, ref) => {
   const [deleteAwb] = useMutation(DELETE_AWB_MUTATION);
+  const internalListRef = React.useRef<any>(null);
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
+  React.useImperativeHandle(ref, () => ({
+    scrollToOffset: (params: any) => {
+      if (internalListRef.current) {
+        if (typeof internalListRef.current.scrollToOffset === 'function') {
+           internalListRef.current.scrollToOffset(params);
+        } else if (internalListRef.current._listView && typeof internalListRef.current._listView.scrollToOffset === 'function') {
+           internalListRef.current._listView.scrollToOffset(params);
+        }
+      }
+    }
+  }));
 
   const handleDelete = (id: string, awbNumber: string) => {
     Alert.alert(
@@ -105,9 +121,9 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
 
     return (
       <View style={{
-        backgroundColor: 'white',
+        backgroundColor: isDark ? '#1F2937' : 'white',
         borderRadius: 16,
-        marginBottom: 8,
+        marginBottom: 20,
         // shadowColor: '#000',
         // shadowOffset: { width: 0, height: 2 },
         // shadowOpacity: 0.1,
@@ -133,7 +149,7 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
       flexDirection: 'row',
       justifyContent: 'flex-end',
       alignItems: 'stretch',
-      marginBottom: 8,
+      marginBottom: 20,
       paddingLeft: 20
     }}>
       <View
@@ -183,7 +199,7 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
 
   return (
     <SwipeListView
-      ref={ref}
+      ref={internalListRef}
       data={data}
       renderItem={renderItem}
       renderHiddenItem={renderHiddenItem}
@@ -203,8 +219,8 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={['#0284C7']}
-          tintColor="#0284C7"
+          colors={isDark ? ['#60A5FA'] : ['#0284C7']}
+          tintColor={isDark ? '#60A5FA' : '#0284C7'}
         />
       }
       onScroll={onScroll}

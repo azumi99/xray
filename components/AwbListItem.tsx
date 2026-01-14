@@ -1,3 +1,4 @@
+import { useThemeStore } from '@/lib/store/themeStore';
 import { Box, HStack } from '@gluestack-ui/themed';
 import { CalendarIcon, ChevronRightIcon, PackageIcon } from 'lucide-react-native';
 import React from 'react';
@@ -25,16 +26,19 @@ const AwbListItem = ({
   index = 0,
   status = 'new',
 }: AwbListItemProps) => {
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
   const getStatusConfig = () => {
     switch (status) {
       case 'new':
-        return { label: 'NEW', bg: '#E0F2FE', color: '#0284C7' }; // Blue-50/Blue-600
+        return { label: 'NEW', bg: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE', color: isDark ? '#38BDF8' : '#0284C7' }; // Blue-50/Blue-600
       case 'processing':
-        return { label: 'PROCESSING', bg: '#FFF7ED', color: '#EA580C' }; // Orange
+        return { label: 'PROCESSING', bg: isDark ? 'rgba(251, 146, 60, 0.2)' : '#FFF7ED', color: isDark ? '#FB923C' : '#EA580C' }; // Orange
       case 'completed':
-        return { label: 'COMPLETED', bg: '#F0FDF4', color: '#16A34A' }; // Green
+        return { label: 'COMPLETED', bg: isDark ? 'rgba(74, 222, 128, 0.2)' : '#F0FDF4', color: isDark ? '#4ADE80' : '#16A34A' }; // Green
       default:
-        return { label: 'NEW', bg: '#E0F2FE', color: '#0284C7' };
+        return { label: 'NEW', bg: isDark ? 'rgba(56, 189, 248, 0.2)' : '#E0F2FE', color: isDark ? '#38BDF8' : '#0284C7' };
     }
   };
 
@@ -48,10 +52,10 @@ const AwbListItem = ({
         style={styles.frontVisible}
       >
         <Box
-          bg="$white"
+          bg={isDark ? '#1F2937' : '$white'}
           borderRadius={20}
           p="$4"
-          style={{ gap: 12 }}
+          style={{ gap: 12, borderWidth: 1, borderColor: isDark ? '#374151' : 'transparent' }}
         >
           {/* Header Row: Label + Status */}
           <HStack justifyContent="space-between" alignItems="center">
@@ -78,13 +82,13 @@ const AwbListItem = ({
           </HStack>
 
           {/* AWB Number */}
-          <Text style={{ fontSize: 20, fontWeight: '800', color: '#111827', marginTop: -4 }}>
+          <Text style={{ fontSize: 20, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827', marginTop: -4 }}>
             {awbNumber}
           </Text>
 
           {/* HAWB Box (Placeholder/Conditional) */}
           <Box
-            bg="#F9FAFB"
+            bg={isDark ? '#374151' : '#F9FAFB'}
             borderRadius="$lg"
             p="$3"
             flexDirection="row"
@@ -95,7 +99,7 @@ const AwbListItem = ({
                 <PackageIcon size={16} color="#9CA3AF" />
                 <View>
                    <Text style={{ fontSize: 10, color: '#9CA3AF', fontWeight: '600' }}>HAWB Number</Text>
-                   <Text style={{ fontSize: 14, color: '#374151', fontWeight: '600' }}>{hawb}</Text>
+                   <Text style={{ fontSize: 14, color: isDark ? '#E5E7EB' : '#374151', fontWeight: '600' }}>{hawb}</Text>
                 </View>
              </View>
              <TouchableOpacity>

@@ -1,5 +1,6 @@
+import { useThemeStore } from '@/lib/store/themeStore';
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, TextStyle, TouchableOpacity, ViewStyle } from 'react-native';
 
 interface ButtonProps {
   children: React.ReactNode;
@@ -20,6 +21,9 @@ const GluestackButton: React.FC<ButtonProps> = ({
   loading = false,
   className
 }) => {
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
   const getVariantStyles = () => {
     switch (variant) {
       case 'primary':
@@ -29,8 +33,8 @@ const GluestackButton: React.FC<ButtonProps> = ({
         };
       case 'secondary':
         return {
-          button: 'bg-gray-200 active:bg-gray-300',
-          text: 'text-gray-800'
+          button: isDark ? 'bg-gray-700 active:bg-gray-600' : 'bg-gray-200 active:bg-gray-300',
+          text: isDark ? 'text-gray-100' : 'text-gray-800'
         };
       case 'outline':
         return {
@@ -77,14 +81,14 @@ const GluestackButton: React.FC<ButtonProps> = ({
         justifyContent: 'center',
         opacity: isDisabled ? 0.6 : 1,
       },
-      ...variantStyles.button.split(' ').map(cls => getStyleFromClassName(cls)),
-      ...sizeStyles.button.split(' ').map(cls => getStyleFromClassName(cls))
+      ...variantStyles.button.split(' ').map(cls => getStyleFromClassName(cls) as any),
+      ...sizeStyles.button.split(' ').map(cls => getStyleFromClassName(cls) as any)
     ])
   ];
 
   const textStyle = [
-    ...variantStyles.text.split(' ').map(cls => getStyleFromClassName(cls)),
-    ...sizeStyles.text.split(' ').map(cls => getStyleFromClassName(cls))
+    ...variantStyles.text.split(' ').map(cls => getStyleFromClassName(cls) as any),
+    ...sizeStyles.text.split(' ').map(cls => getStyleFromClassName(cls) as any)
   ];
 
   return (
@@ -97,7 +101,7 @@ const GluestackButton: React.FC<ButtonProps> = ({
       {loading ? (
         <ActivityIndicator
           size="small"
-          color={variant === 'primary' ? '#ffffff' : '#3b82f6'}
+          color={variant === 'primary' ? '#ffffff' : (isDark ? '#60A5FA' : '#3b82f6')}
         />
       ) : (
         <Text style={textStyle}>{children}</Text>
@@ -114,11 +118,14 @@ const getStyleFromClassName = (className: string): ViewStyle | TextStyle => {
     'active:bg-blue-600': { backgroundColor: '#2563eb' },
     'bg-gray-200': { backgroundColor: '#e5e7eb' },
     'active:bg-gray-300': { backgroundColor: '#d1d5db' },
+    'bg-gray-700': { backgroundColor: '#374151' },
+    'active:bg-gray-600': { backgroundColor: '#4B5563' },
     'bg-transparent': { backgroundColor: 'transparent' },
     'border': { borderWidth: 1 },
     'border-blue-500': { borderColor: '#3b82f6' },
     'text-white': { color: '#ffffff' },
     'text-gray-800': { color: '#1f2937' },
+    'text-gray-100': { color: '#F3F4F6' },
     'text-blue-500': { color: '#3b82f6' },
     'px-3': { paddingHorizontal: 12 },
     'px-4': { paddingHorizontal: 16 },

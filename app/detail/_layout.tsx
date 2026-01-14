@@ -1,5 +1,5 @@
-import { Stack, useGlobalSearchParams } from 'expo-router';
-import { useQuery } from '@apollo/client';
+import { useThemeStore } from '@/lib/store/themeStore';
+import { Stack } from 'expo-router';
 import gql from 'graphql-tag';
 
 const GET_AWB_DETAIL_HEADER = gql`
@@ -12,6 +12,9 @@ const GET_AWB_DETAIL_HEADER = gql`
 `;
 
 export default function DetailLayout() {
+  const { theme } = useThemeStore();
+  const isDark = theme === 'dark';
+
   return (
     <Stack>
       <Stack.Screen
@@ -21,15 +24,15 @@ export default function DetailLayout() {
           headerTitle: 'AWB Details',
           headerBackTitleVisible: false,
           headerStyle: {
-            backgroundColor: '#FFFFFF',
+            backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
             borderBottomWidth: 0.5,
-            borderBottomColor: '#E5E7EB',
+            borderBottomColor: isDark ? '#374151' : '#E5E7EB',
           },
-          headerTintColor: '#0284C7',
+          headerTintColor: isDark ? '#60A5FA' : '#0284C7',
           headerTitleStyle: {
             fontWeight: '600',
             fontSize: 16,
-            color: '#1F2937',
+            color: isDark ? '#F9FAFB' : '#1F2937',
           },
         }}
       />
