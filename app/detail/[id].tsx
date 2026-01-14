@@ -353,18 +353,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  // Modal styles
-  modalOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
-  },
   modalContent: {
     width: '90%',
     maxHeight: '80%',
@@ -400,6 +388,9 @@ const DetailScreen = () => {
   const [selectedAirwaybillPhoto, setSelectedAirwaybillPhoto] = useState<string | null>(null);
   const [airwaybillPhotoLoading, setAirwaybillPhotoLoading] = useState(false);
 
+  // Validasi id sebelum menjalankan query
+  const isValidId = id && typeof id === 'string' && id !== 'new';
+
   // GraphQL query for AWB detail
   const {
     data,
@@ -407,7 +398,7 @@ const DetailScreen = () => {
     error,
   } = useQuery(GET_AWB_DETAIL, {
     variables: { id },
-    skip: !session || id === 'new',
+    skip: !session || !isValidId,
     fetchPolicy: 'network-only',
   });
 
@@ -427,16 +418,25 @@ const DetailScreen = () => {
   console.log('X-ray Photos:', xrayPhotos);
   console.log('AirwaybillXrayDetails:', awbData?.airwaybillXrayDetails);
   console.log('Base URL:', baseUrl);
+  console.log('ID Parameter:', id);
+  console.log('Session:', session);
+  console.log('GraphQL Loading:', graphQLLoading);
+  console.log('GraphQL Error:', error);
 
   const handleImageLoad = () => {
-    Image.getSize(awbData?.photo_airwaybill || '', (width, height) => {
-      const screenWidth = Dimensions.get('window').width - 40; // Account for padding
-      const aspectRatio = height / width;
-      setImageDimensions({
-        width: screenWidth,
-        height: screenWidth * aspectRatio
+    if (awbData?.photo_airwaybill) {
+      const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
+      Image.getSize(imageUrl, (width, height) => {
+        const screenWidth = Dimensions.get('window').width - 40; // Account for padding
+        const aspectRatio = height / width;
+        setImageDimensions({
+          width: screenWidth,
+          height: screenWidth * aspectRatio
+        });
+      }, (error) => {
+        console.error('Error getting image size:', error);
       });
-    });
+    }
   };
 
   useEffect(() => {
@@ -452,10 +452,14 @@ const DetailScreen = () => {
     }
   }, [awbData?.airwaybill_number]);
 
-const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
+  const imageUrl = awbData?.photo_airwaybill ?
+    (awbData?.photo_airwaybill.startsWith('http') ?
+      awbData?.photo_airwaybill :
+      `${baseUrl}/${awbData?.photo_airwaybill}`) :
+    '';
 
   // Loading state
-  if (graphQLLoading) {
+  if (graphQLLoading || (!data && isValidId)) {
     return (
       <View style={styles.container}>
         <LinearGradient
@@ -488,6 +492,66 @@ const imageUrl = `${baseUrl}/${awbData?.photo_airwaybill}`;
             </View>
             <Text style={styles.emptyTitle}>Unable to Load</Text>
             <Text style={styles.emptySubtitle}>{error.message}</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Handle case when ID is invalid
+  if (!isValidId) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.scrollView, styles.emptyContainer]}>
+            <View style={[styles.emptyIcon, { backgroundColor: '#FEF2F2' }]}>
+              <X size={28} color="#EF4444" />
+            </View>
+            <Text style={styles.emptyTitle}>Invalid ID</Text>
+            <Text style={styles.emptySubtitle}>The requested item ID is not valid</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Handle case when no data is returned despite valid ID
+  if (!awbData && !graphQLLoading) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.scrollView, styles.emptyContainer]}>
+            <View style={[styles.emptyIcon, { backgroundColor: '#FEF2F2' }]}>
+              <X size={28} color="#EF4444" />
+            </View>
+            <Text style={styles.emptyTitle}>No Data Found</Text>
+            <Text style={styles.emptySubtitle}>The requested item could not be found</Text>
+          </View>
+        </LinearGradient>
+      </View>
+    );
+  }
+
+  // Handle case when no session is available
+  if (!session) {
+    return (
+      <View style={styles.container}>
+        <LinearGradient
+          colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
+          style={{ flex: 1 }}
+        >
+          <View style={[styles.scrollView, styles.emptyContainer]}>
+            <View style={[styles.emptyIcon, { backgroundColor: '#FEF2F2' }]}>
+              <X size={28} color="#EF4444" />
+            </View>
+            <Text style={styles.emptyTitle}>Authentication Required</Text>
+            <Text style={styles.emptySubtitle}>Please log in to view this content</Text>
           </View>
         </LinearGradient>
       </View>

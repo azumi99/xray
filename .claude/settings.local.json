@@ -32,7 +32,8 @@
       "Bash(cmd.exe:*)",
       "Bash(./gradlew.bat:*)",
       "Bash(gradlew.bat:*)",
-      "Bash(yes:*)"
+      "Bash(yes:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
