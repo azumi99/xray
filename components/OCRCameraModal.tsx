@@ -1,13 +1,16 @@
+import { sendAwb } from '@/lib/api/services/agentScan';
 import { gql, useMutation, useQuery } from '@apollo/client';
 import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import { extractTextFromImage } from 'expo-text-extractor';
-import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Plus, X, Zap, ZapOff } from 'lucide-react-native';
-import React, { useRef, useState } from 'react';
+import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Maximize2, Plus, X, Zap, ZapOff } from 'lucide-react-native';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -23,6 +26,7 @@ import { useAuth } from '../lib/store/auth';
 interface WatchedFile {
     id: string;
     filepath: string;
+    link: string;
     assign_id: string | null;
     created_at: string;
 }
@@ -70,6 +74,7 @@ const GET_WATCHED_FILES_QUERY = gql`
       data {
         id
         filepath
+        link
         assign_id
         created_at
       }
@@ -102,11 +107,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [facing, setFacing] = useState<CameraType>('back');
     const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
     const [extractedText, setExtractedText] = useState<string>('');
+    const [extractedHawb, setExtractedHawb] = useState<string>('');
     const [isProcessing, setIsProcessing] = useState(false);
+    const [messageLoading, setMessageLoading] = useState('');
     const [copied, setCopied] = useState(false);
     const [xrayImages, setXrayImages] = useState<XrayImage[]>([]);
     const [isSaving, setIsSaving] = useState(false);
     const cameraRef = useRef<CameraView>(null);
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
     console.log('OCRCameraModal rendered with visible:', xrayImages);
 
     // Get session data for authorization
@@ -120,12 +128,40 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const { data: watchedFilesData, refetch: refetchWatchedFiles } = useQuery(GET_WATCHED_FILES_QUERY, {
         fetchPolicy: 'cache-and-network',
         variables: { first: 20 },
+        skip: !visible,
     });
 
     // Mutation untuk create watched file
     const [createWatchedFile] = useMutation(CREATE_WATCHED_FILE_MUTATION);
 
     const watchedFiles = watchedFilesData?.watchedFiles?.data || [];
+
+    // Polling setiap 5 detik untuk cek watched files baru
+    useEffect(() => {
+        if (visible) {
+            // Refetch immediately saat modal visible
+            refetchWatchedFiles();
+
+            // Setup polling interval setiap 5 detik
+            pollingIntervalRef.current = setInterval(() => {
+                refetchWatchedFiles();
+            }, 5000);
+
+            // Cleanup interval saat modal tidak visible atau unmount
+            return () => {
+                if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                }
+            };
+        } else {
+            // Cleanup saat modal tidak visible
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+            }
+        }
+    }, [visible, refetchWatchedFiles]);
 
     const toggleFlash = () => {
         setFlash((current) => (current === 'off' ? 'on' : 'off'));
@@ -141,7 +177,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             .filter(file => !xrayImages.some(img => img.id === file.id))
             .map(file => ({
                 id: file.id,
-                uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
+                uri: file.link,
                 status: 'success' as const,
                 uploadedPath: file.filepath,
             }));
@@ -217,8 +253,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 quality: 0.9,
                 base64: false,
                 skipProcessing: false,
-                enableAutoStabilization: true,
-                enableAutoRedEye: true,
+                shutterSound: false,
             });
 
             console.log('Photo captured:', photo);
@@ -267,6 +302,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
     const processOCR = async (imageUri: string) => {
     setIsProcessing(true);
+    setMessageLoading('Extracting text from image...');
     setExtractedText('');
 
     try {
@@ -281,6 +317,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         );
 
         const joined = cleaned.join(' ');
+        console.log('Extracted AWB before formatting:', cleaned);
 
         let awb =
             joined.match(/\b\d{3}-\d{8}\b/)?.[0] ??
@@ -290,25 +327,54 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             })() ??
             joined.match(/\b\d{8}\b/)?.[0] ??
             null;
+        let hawb = 
+            
+            // Fallback: Cari pola EHAN / KGL yang diikuti angka
+            joined.match(/\b(EHAN|KGL|FHAN)[A-Z0-9]+\b/)?.[0] ??
+            
+            null;
 
-        if (awb) {
-            setExtractedText(awb);
+        if (awb && hawb) {    
+            setExtractedText(awb ?? '');
+            setExtractedHawb(hawb ?? '');
+            setIsProcessing(false);
+            setMessageLoading('');
         } else {
             setExtractedText('');
-            Alert.alert('AWB Not Found', 'Unable to detect AWB number');
+            setExtractedHawb('');
+            
+            setIsProcessing(true);
+            setMessageLoading("Extracting via AI service...");
+
+            sendAwb(imageUri)
+              .then(res => {
+                if (res?.success) {
+                  setExtractedText(res.data?.awb_no || '');
+                  setExtractedHawb(res.data?.hawb_no || '');
+                } else {
+                  console.warn("Extract failed", res);
+                }
+              })
+              .catch(err => {
+                console.error(err.response?.data || err.message);
+              })
+              .finally(() => {
+                setIsProcessing(false);
+                setMessageLoading('');
+              });
+            
         }
 
         console.log('📦 AWB:', awb);
     } catch (error) {
         console.error(error);
-        Alert.alert('OCR Error', 'Failed to extract text');
-    } finally {
         setIsProcessing(false);
-    }
+        Alert.alert('OCR Error', 'Failed to extract text');
+    } 
 };
 
 
-     const retakePicture = () => {
+    const retakePicture = () => {
         setCapturedPhoto(null);
         setExtractedText('');
         setCopied(false);
@@ -369,6 +435,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                     input: {
                         airwaybill_number: extractedText.trim(),
                         photo_airwaybill: imagePath,
+                        hawb: extractedHawb.trim(),
                     },
                 },
             });
@@ -564,148 +631,139 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
 
                 {/* Preview with OCR Results */}
+                {/* Preview with OCR Results */}
                 {capturedPhoto && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
-                        <View style={styles.previewContainer}>
-                            <View style={styles.previewHeader}>
-                                <Text style={styles.previewTitle}>OCR Result</Text>
-                                <TouchableOpacity onPress={handleClose}>
-                                    <X stroke={COLORS.text} width={24} height={24} />
-                                </TouchableOpacity>
-                            </View>
+                    <SafeAreaView style={styles.resultContainer} edges={['left', 'right', 'top', 'bottom']}>
+                        <View style={styles.resultHeader}>
+                            <Text style={styles.resultTitle}>OCR Result</Text>
+                            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                                <X stroke={COLORS.text} width={24} height={24} />
+                            </TouchableOpacity>
                         </View>
 
-                        <View style={styles.imageContainer}>
-                            <Image source={{ uri: capturedPhoto }} style={styles.previewImage} />
-                        </View>
+                        <KeyboardAvoidingView 
+                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                            style={{ flex: 1 }}
+                        >
+                            <ScrollView 
+                                style={styles.resultContent} 
+                                contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}
+                                showsVerticalScrollIndicator={false}
+                                keyboardShouldPersistTaps="handled"
+                            >
+                                {/* Scanned Image Card */}
+                                <View style={styles.resultImageCard}>
+                                    <Image source={{ uri: capturedPhoto }} style={styles.resultImage} />
+                                    <View style={styles.scannedBadge}>
+                                        <Maximize2 stroke="#FFFFFF" width={12} height={12} />
+                                        <Text style={styles.scannedBadgeText}>Scanned</Text>
+                                    </View>
+                                </View>
 
-                        <ScrollView style={styles.contentScroll} showsVerticalScrollIndicator={false}>
-                            {/* AWB Number Form */}
-                            <View style={styles.formContainer}>
-                                <Text style={styles.formLabel}>AWB Number</Text>
-                                <View style={styles.inputContainer}>
-                                    <TextInput
-                                        style={styles.textInput}
-                                        value={extractedText}
-                                        onChangeText={setExtractedText}
-                                        placeholder="Enter AWB number"
-                                        placeholderTextColor={COLORS.textSecondary}
-                                        editable={!isProcessing}
-                                    />
-                                    {extractedText && (
-                                        <TouchableOpacity onPress={copyToClipboard} style={styles.copyButton}>
+                                {/* AWB Number Input */}
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.fieldLabel}>AWB Number</Text>
+                                    <View style={styles.inputCard}>
+                                        <TextInput
+                                            style={styles.inputField}
+                                            value={extractedText}
+                                            onChangeText={setExtractedText}
+                                            placeholder="000 0000 0000"
+                                            placeholderTextColor="#9CA3AF"
+                                            editable={!isProcessing}
+                                        />
+                                        <TouchableOpacity onPress={copyToClipboard} style={styles.copyAction}>
                                             {copied ? (
                                                 <Check stroke={COLORS.success} width={20} height={20} />
                                             ) : (
-                                                <Copy stroke={COLORS.primary} width={20} height={20} />
+                                                <Copy stroke="#3B82F6" width={20} height={20} />
                                             )}
                                         </TouchableOpacity>
+                                    </View>
+                                </View>
+
+                                {/* HAWB Number Input */}
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.fieldLabel}>HAWB Number</Text>
+                                    <View style={styles.inputCard}>
+                                        <TextInput
+                                            style={styles.inputField}
+                                            value={extractedHawb}
+                                            onChangeText={setExtractedHawb}
+                                            placeholder="Enter HAWB"
+                                            placeholderTextColor="#9CA3AF"
+                                            editable={!isProcessing}
+                                        />
+                                        {extractedHawb ? (
+                                            <TouchableOpacity onPress={() => { Clipboard.setStringAsync(extractedHawb); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={styles.copyAction}>
+                                                 <Copy stroke="#3B82F6" width={20} height={20} />
+                                            </TouchableOpacity>
+                                        ) : null}
+                                    </View>
+                                </View>
+
+                                {/* X-ray Image Upload */}
+                                <View style={styles.fieldGroup}>
+                                    <Text style={styles.fieldLabel}>X-ray Image</Text>
+                                    <TouchableOpacity onPress={pickXrayImages} style={styles.addXrayButton}>
+                                        <View style={styles.addXrayContent}>
+                                             <Plus stroke="#3B82F6" width={20} height={20} />
+                                             <Text style={styles.addXrayText}>Add X-ray Images</Text>
+                                        </View>
+                                    </TouchableOpacity>
+                                    
+                                    {/* Image Previews (Horizontal) */}
+                                    {xrayImages.length > 0 && (
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.xrayList}>
+                                            {xrayImages.map((img) => (
+                                                <View key={img.id} style={styles.xrayThumbnail}>
+                                                    <Image source={{ uri: img.uri }} style={styles.xrayThumbImage} />
+                                                    <TouchableOpacity onPress={() => removeXrayImage(img.id)} style={styles.removeXrayBtn}>
+                                                        <X stroke="white" width={10} height={10} />
+                                                    </TouchableOpacity>
+                                                    {img.status === 'success' && (
+                                                        <View style={styles.statusBadgeSuccess}><Check stroke="white" width={10} height={10}/></View>
+                                                    )}
+                                                    {img.status === 'uploading' && (
+                                                        <View style={styles.uploadProgressOverlay}>
+                                                            <ActivityIndicator size="small" color="white" />
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            ))}
+                                        </ScrollView>
                                     )}
                                 </View>
-                                {isProcessing && (
-                                    <View style={styles.processingContainer}>
-                                        <ActivityIndicator size="small" color={COLORS.primary} />
-                                        <Text style={styles.processingText}>Extracting text...</Text>
-                                    </View>
-                                )}
-                            </View>
-                            
-                            {/* X-ray Images Upload */}
-                            <View style={styles.uploadContainer}>
-                                <Text style={styles.formLabel}>X-ray Image</Text>
-                                <TouchableOpacity onPress={pickXrayImages} style={styles.uploadButton}>
-                                    <Plus stroke={COLORS.primary} width={24} height={24} />
-                                    <Text style={styles.uploadButtonText}>Add X-ray Images</Text>
-                                    {xrayImages.length > 0 && (
-                                    <Text style={styles.uploadButtonText}>{xrayImages.length}</Text>
-                                    )}
+                            </ScrollView>
+
+                            {/* Footer Actions */}
+                            <View style={styles.resultFooter}>
+                                <TouchableOpacity style={styles.btnSecondary} onPress={retakePicture}>
+                                    <Text style={styles.btnSecondaryText}>Retake</Text>
                                 </TouchableOpacity>
-
-                                {xrayImages.length > 0 && (
-                                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.imageScroll}>
-                                        {xrayImages.map((xrayImage, index) => (
-                                            <View key={xrayImage.id} style={styles.imagePreviewContainer}>
-                                                <Image
-                                                    source={{ uri: xrayImage.uri }}
-                                                    style={[
-                                                        styles.xrayImagePreview,
-                                                        xrayImage.status === 'success' ? null : styles.uploadedImageOpacity
-                                                    ]}
-                                                />
-
-                                                {/* Progress overlay for uploading images */}
-                                                {xrayImage.status === 'uploading' && (
-                                                    <View style={styles.uploadProgressOverlay}>
-                                                        <ActivityIndicator size="small" color={COLORS.white} />
-                                                        <Text style={styles.progressText}>
-                                                            {xrayImage.progress || 0}%
-                                                        </Text>
-                                                    </View>
-                                                )}
-
-                                                {/* Success overlay */}
-                                                {xrayImage.status === 'success' && (
-                                                    <View style={styles.successOverlay}>
-                                                        <Check stroke={COLORS.white} width={20} height={20} />
-                                                    </View>
-                                                )}
-
-                                                {/* Error overlay with retry button */}
-                                                {xrayImage.status === 'error' && (
-                                                    <View style={styles.errorOverlay}>
-                                                        <TouchableOpacity
-                                                            onPress={() => retryUploadXrayImage(xrayImage.id)}
-                                                            style={styles.retryButton}
-                                                        >
-                                                            <RefreshCw stroke={COLORS.white} width={16} height={16} />
-                                                        </TouchableOpacity>
-                                                    </View>
-                                                )}
-
-                                                <TouchableOpacity
-                                                    onPress={() => removeXrayImage(xrayImage.id)}
-                                                    style={styles.removeImageButton}
-                                                >
-                                                    <X stroke={COLORS.white} width={16} height={16} />
-                                                </TouchableOpacity>
-                                            </View>
-                                        ))}
-                                    </ScrollView>
-                                )}
-                            </View>
-                        </ScrollView>
-
-                        {/* Fixed Bottom Actions */}
-                        <View style={styles.bottomActionsContainer}>
-                            <View style={styles.previewActions}>
-                                <TouchableOpacity
-                                    style={[styles.actionButton, styles.retakeButton]}
-                                    onPress={retakePicture}
-                                >
-                                    <Text style={styles.retakeButtonText}>Retake</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.actionButton,
-                                        styles.doneButton,
-                                        isSaving && styles.disabledButton
-                                    ]}
+                                <TouchableOpacity 
+                                    style={[styles.btnPrimary, (isSaving || isProcessing) && styles.btnDisabled]} 
                                     onPress={handleDone}
                                     disabled={isSaving || isProcessing}
                                 >
                                     {isSaving ? (
-                                        <View style={styles.loadingContainer}>
-                                            <ActivityIndicator size="small" color={COLORS.white} />
-                                            <Text style={[styles.doneButtonText, { marginLeft: 8 }]}>
-                                                Saving...
-                                            </Text>
-                                        </View>
+                                        <ActivityIndicator color="white" />
                                     ) : (
-                                        <Text style={styles.doneButtonText}>Done</Text>
+                                        <Text style={styles.btnPrimaryText}>Done</Text>
                                     )}
                                 </TouchableOpacity>
                             </View>
-                        </View>
+                        </KeyboardAvoidingView>
+
+                        {/* Loading Overlay */}
+                        {isProcessing && (
+                            <View style={styles.loadingOverlay}>
+                                <View style={styles.loadingCard}>
+                                    <ActivityIndicator size="large" color="#3B82F6" />
+                                    <Text style={styles.loadingText}>{messageLoading || 'Processing...'}</Text>
+                                </View>
+                            </View>
+                        )}
                     </SafeAreaView>
                 )}
             </View>
@@ -724,8 +782,7 @@ const styles = StyleSheet.create({
         zIndex: 9999,
     },
     modalContent: {
-        width: '100%',
-        height: '100%',
+        flex: 1,
         backgroundColor: 'black',
     },
     container: {
@@ -740,6 +797,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
         padding: SPACING.xl,
+        backgroundColor: COLORS.background,
     },
     permissionTitle: {
         fontSize: 24,
@@ -782,364 +840,332 @@ const styles = StyleSheet.create({
         paddingVertical: SPACING.m,
     },
     iconButton: {
-        width: 56,
-        height: 56,
-        borderRadius: 28,
+        width: 50,
+        height: 50,
+        borderRadius: 25,
         backgroundColor: 'rgba(0,0,0,0.5)',
         alignItems: 'center',
         justifyContent: 'center',
-        // Larger hit area without changing visual size
-        padding: 8,
-        margin: -8,
     },
     ocrBadge: {
-        backgroundColor: 'rgba(2, 132, 199, 0.9)',
-        paddingHorizontal: SPACING.m,
-        paddingVertical: SPACING.xs,
-        borderRadius: SPACING.m,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
     },
     ocrBadgeText: {
-        color: COLORS.white,
-        fontSize: 14,
+        color: 'white',
         fontWeight: '600',
-    },
-    flipButton: {
-        backgroundColor: 'rgba(0,0,0,0.5)',
-        // Larger hit area without changing visual size
-        padding: 8,
-        margin: -8,
-    },
-    placeholderButton: {
-        backgroundColor: 'transparent',
+        fontSize: 12,
     },
     scanArea: {
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        padding: SPACING.xl,
+        padding: 40,
     },
     corner: {
         position: 'absolute',
         width: 40,
         height: 40,
-        borderColor: COLORS.white,
+        borderColor: 'white',
+        borderWidth: 4,
     },
-    topLeft: {
-        top: 0,
-        left: 20,
-        borderTopWidth: 3,
-        borderLeftWidth: 3,
-    },
-    topRight: {
-        top: 0,
-        right: 20,
-        borderTopWidth: 3,
-        borderRightWidth: 3,
-    },
-    bottomLeft: {
-        bottom: 0,
-        left: 20,
-        borderBottomWidth: 3,
-        borderLeftWidth: 3,
-    },
-    bottomRight: {
-        bottom: 0,
-        right: 20,
-        borderBottomWidth: 3,
-        borderRightWidth: 3,
-    },
+    topLeft: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0 },
+    topRight: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0 },
+    bottomLeft: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0 },
+    bottomRight: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0 },
     scanHint: {
-        color: COLORS.white,
+        color: 'white',
+        marginTop: 20,
         fontSize: 14,
-        marginTop: SPACING.m,
-        textAlign: 'center',
         opacity: 0.8,
     },
     bottomControls: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
+        justifyContent: 'space-around',
         alignItems: 'center',
-        paddingHorizontal: SPACING.xl,
-        paddingBottom: SPACING.xl + SPACING.m,
+        paddingBottom: 40,
+    },
+    flipButton: {
+        backgroundColor: 'rgba(0,0,0,0.5)',
     },
     captureButton: {
-        width: 96,
-        height: 96,
-        borderRadius: 48,
-        backgroundColor: 'rgba(255,255,255,0.3)',
-        alignItems: 'center',
-        justifyContent: 'center',
-        // Larger hit area without changing visual size
-        padding: 8,
-        margin: -8,
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.1)',
-    },
-    captureInner: {
-        width: 68,
-        height: 68,
-        borderRadius: 34,
-        backgroundColor: COLORS.white,
-    },
-    previewContainer: {
-        backgroundColor: COLORS.background,
-    },
-    previewHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: SPACING.m,
-        marginTop: SPACING.m,
-        paddingVertical: SPACING.s,
-    },
-    previewTitle: {
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: COLORS.text,
-    },
-    imageContainer: {
-        height: 200,
-        backgroundColor: COLORS.black,
-    },
-    previewImage: {
-        flex: 1,
-        resizeMode: 'contain',
-    },
-    ocrResultsContainer: {
-        flex: 1,
-        backgroundColor: COLORS.background,
-        padding: SPACING.m,
-    },
-    ocrHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: SPACING.s,
-    },
-    ocrHeaderText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
-    },
-    copyButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: SPACING.s,
-        paddingVertical: SPACING.xs,
-    },
-    copyButtonText: {
-        color: COLORS.primary,
-        fontSize: 14,
-        fontWeight: '500',
-    },
-    copiedText: {
-        color: COLORS.success,
-    },
-    processingContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    processingText: {
-        marginTop: SPACING.m,
-        color: COLORS.textSecondary,
-        fontSize: 14,
-    },
-    ocrTextScroll: {
-        flex: 1,
-        backgroundColor: COLORS.white,
-        borderRadius: SPACING.m,
-        padding: SPACING.m,
-    },
-    ocrText: {
-        fontSize: 14,
-        lineHeight: 22,
-        color: COLORS.text,
-    },
-    noTextMessage: {
-        fontSize: 14,
-        color: COLORS.textSecondary,
-        textAlign: 'center',
-        marginTop: SPACING.l,
-    },
-    contentScroll: {
-        flex: 1,
-    },
-    bottomActionsContainer: {
-        backgroundColor: COLORS.background,
-        borderTopWidth: 1,
-        borderTopColor: COLORS.border,
-        paddingHorizontal: SPACING.l,
-        paddingVertical: SPACING.m,
-        paddingBottom: SPACING.m + SPACING.l,
-    },
-    previewActions: {
-        flexDirection: 'row',
-        gap: SPACING.m,
-    },
-    actionButton: {
-        flex: 1,
-        paddingVertical: SPACING.m,
-        borderRadius: SPACING.m,
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: 50,
-    },
-    retakeButton: {
-        backgroundColor: COLORS.gray,
-    },
-    retakeButtonText: {
-        color: COLORS.white,
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    doneButton: {
-        backgroundColor: COLORS.primary,
-    },
-    doneButtonText: {
-        color: COLORS.white,
-        fontSize: 16,
-        fontWeight: '600',
-    },
-    // Form styles
-    formContainer: {
-        backgroundColor: COLORS.background,
-        padding: SPACING.m,
-        marginBottom: SPACING.s,
-    },
-    formLabel: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: COLORS.text,
-        marginBottom: SPACING.s,
-    },
-    inputContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        backgroundColor: COLORS.white,
-        borderRadius: SPACING.m,
-        borderWidth: 1,
-        borderColor: COLORS.border,
-        paddingHorizontal: SPACING.m,
-    },
-    textInput: {
-        flex: 1,
-        fontSize: 16,
-        color: COLORS.text,
-        paddingVertical: SPACING.m,
-    },
-    // Upload styles
-    uploadContainer: {
-        backgroundColor: COLORS.background,
-        padding: SPACING.m,
-        paddingBottom: SPACING.xl,
-    },
-    uploadButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: COLORS.white,
-        borderRadius: SPACING.m,
-        borderWidth: 2,
-        borderColor: COLORS.primary,
-        borderStyle: 'dashed',
-        paddingVertical: SPACING.l,
-        gap: SPACING.s,
-    },
-    uploadButtonText: {
-        fontSize: 16,
-        color: COLORS.primary,
-        fontWeight: '600',
-    },
-    imageScroll: {
-        paddingTop: SPACING.xl,
-        paddingBottom: SPACING.l,
-    },
-    imagePreviewContainer: {
-        marginRight: SPACING.m,
-        position: 'relative',
-    },
-    xrayImagePreview: {
         width: 80,
         height: 80,
-        borderRadius: SPACING.s,
-        backgroundColor: COLORS.gray,
-    },
-    removeImageButton: {
-        position: 'absolute',
-        top: -8,
-        right: -8,
-        backgroundColor: COLORS.error,
-        borderRadius: 12,
-        width: 24,
-        height: 24,
+        borderRadius: 40,
+        borderWidth: 4,
+        borderColor: 'white',
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: 3,
+        backgroundColor: 'transparent',
     },
-    disabledButton: {
-        backgroundColor: COLORS.gray,
+    captureInner: {
+        width: 64,
+        height: 64,
+        borderRadius: 32,
+        backgroundColor: 'white',
+    },
+    placeholderButton: {
+        width: 50,
+        height: 50,
+    },
+    
+    // Result / Preview Styles
+    resultContainer: {
+        flex: 1,
+        backgroundColor: '#FFFFFF',
+    },
+    resultHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingTop: 10,
+        paddingBottom: 10,
+    },
+    resultTitle: {
+        fontSize: 24,
+        fontWeight: '800',
+        color: '#111827',
+    },
+    closeButton: {
+        padding: 4,
+    },
+    resultContent: {
+        flex: 1,
+        paddingHorizontal: 20,
+    },
+    resultImageCard: {
+        marginTop: 20,
+        marginBottom: 24,
+        borderRadius: 24,
+        overflow: 'hidden',
+        backgroundColor: '#F3F4F6',
+        // aspectRatio: 10/3,
+        height:'40%',
+        position: 'relative',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 3,
+    },
+    resultImage: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    scannedBadge: {
+        position: 'absolute',
+        bottom: 12,
+        right: 12,
+        backgroundColor: 'rgba(31, 41, 55, 0.85)',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+    },
+    scannedBadgeText: {
+        color: 'white',
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    fieldGroup: {
+        marginBottom: 20,
+    },
+    fieldLabel: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: '#6B7280',
+        marginBottom: 8,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    inputCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        borderRadius: 16,
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+        paddingHorizontal: 16,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.05,
+        shadowRadius: 2,
+        elevation: 1,
+    },
+    inputField: {
+        flex: 1,
+        fontSize: 16,
+        color: '#111827',
+        paddingVertical: 14,
+        fontWeight: '500',
+    },
+    copyAction: {
+        padding: 8,
+    },
+    addXrayButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#F0F9FF',
+        borderWidth: 2,
+        borderColor: '#93C5FD',
+        borderStyle: 'dashed',
+        borderRadius: 16,
+        height: 56,
+    },
+    addXrayContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    addXrayText: {
+        color: '#2563EB',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    xrayList: {
+        marginTop: 12,
+        paddingVertical: 5,
+        
+    },
+    xrayThumbnail: {
+        width: 64,
+        height: 64,
+        marginRight: 10,
+        position: 'relative',
+    },
+    xrayThumbImage: {
+        width: 64,
+        height: 64,
+        borderRadius: 12,
+        backgroundColor: '#E5E7EB',
+        resizeMode: 'cover',
+    },
+    removeXrayBtn: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#EF4444',
+        borderRadius: 12,
+        width: 20,
+        height: 20,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'white',
+        zIndex: 10,
+    },
+    statusBadgeSuccess: {
+        position: 'absolute',
+        bottom: -4,
+        right: -4,
+        backgroundColor: '#22C55E',
+        borderRadius: 10,
+        width: 18,
+        height: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'white',
+        
+    },
+    uploadProgressOverlay: {
+        position: 'absolute',
+        top: 0, left: 0, right: 0, bottom: 0,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        borderRadius: 12,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    
+    // Footer
+    resultFooter: {
+        padding: 24,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 16,
+        backgroundColor: 'white',
+        borderTopWidth: 1,
+        borderColor: '#F3F4F6',
+    },
+    btnSecondary: {
+        flex: 1,
+        backgroundColor: '#F3F4F6',
+        paddingVertical: 14,
+        borderRadius: 99,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    btnSecondaryText: {
+        color: '#374151',
+        fontSize: 15,
+        fontWeight: '600',
+    },
+    btnPrimary: {
+        flex: 1,
+        backgroundColor: '#2563EB',
+        paddingVertical: 14,
+        borderRadius: 99,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    btnDisabled: {
         opacity: 0.7,
+        backgroundColor: '#93C5FD',
+    },
+    btnPrimaryText: {
+        color: 'white',
+        fontSize: 15,
+        fontWeight: '600',
     },
     loadingContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
     },
-    // Upload status styles
-    uploadedImageOpacity: {
-        opacity: 0.6,
-    },
-    uploadProgressOverlay: {
+    // Loading Overlay Styles
+    loadingOverlay: {
         position: 'absolute',
         top: 0,
         left: 0,
         right: 0,
         bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        borderRadius: SPACING.s,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2,
-    },
-    successOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(34, 197, 94, 0.8)',
-        borderRadius: SPACING.s,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2,
-    },
-    errorOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(239, 68, 68, 0.8)',
-        borderRadius: SPACING.s,
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 2,
-    },
-    retryButton: {
-        backgroundColor: 'rgba(255, 255, 255, 0.2)',
-        borderRadius: 16,
-        width: 32,
-        height: 32,
+        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+        zIndex: 50,
         alignItems: 'center',
         justifyContent: 'center',
     },
-    progressText: {
-        color: COLORS.white,
-        fontSize: 12,
+    loadingCard: {
+        backgroundColor: 'white',
+        padding: 24,
+        borderRadius: 20,
+        alignItems: 'center',
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.1,
+        shadowRadius: 10,
+        elevation: 5,
+        minWidth: 180,
+    },
+    loadingText: {
+        marginTop: 16,
+        fontSize: 15,
         fontWeight: '600',
+        color: '#374151',
+        textAlign: 'center',
+    },
+    processingContainer: {
         marginTop: 4,
+    },
+    processingText: {
+        fontSize: 12,
+        color: '#6B7280',
+        fontStyle: 'italic',
     },
 });
 

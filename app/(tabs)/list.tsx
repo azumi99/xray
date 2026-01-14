@@ -1,37 +1,31 @@
-import AwbListItem from '@/components/AwbListItem';
 import EmptyState from '@/components/EmptyState';
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
 import SwipeList from '@/components/SwipeList';
 import { useAuth } from '@/lib/store/auth';
-import { formatDateTime } from '@/utils/formatDate';
 import { gql, useQuery } from '@apollo/client';
 import {
-  Badge,
   Box,
   HStack,
   Input,
   InputField,
-  InputIcon,
-  InputSlot,
-  Text,
-  VStack,
   Spinner,
+  VStack
 } from '@gluestack-ui/themed';
-import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import {
   ArrowUpIcon,
-  CalendarIcon,
   FilterIcon,
   PackageIcon,
-  SearchIcon,
+  SearchIcon
 } from 'lucide-react-native';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   NativeScrollEvent,
   NativeSyntheticEvent,
-  RefreshControl,
+  StyleSheet,
+  Text,
   TouchableOpacity,
+  View
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -53,6 +47,7 @@ const GET_AWB_LIST = gql`
         id
         airwaybill_number
         photo_airwaybill
+        hawb
         created_at
         updated_at
         xray_photos_count
@@ -98,11 +93,9 @@ const ListScreen = () => {
     notifyOnNetworkStatusChange: true,
     onError: (error) => {
       console.log('GraphQL Error:', JSON.stringify(error, null, 2));
-      console.log('GraphQLErrors:', error.graphQLErrors);
-      console.log('NetworkError:', error.networkError);
     },
     onCompleted: (data) => {
-      // Initialize data on first load - gunakan urutan dari backend
+      // Initialize data on first load
       if (currentPage === 1) {
         setAllAwbData(data?.airwaybillxrays?.data || []);
         setHasMorePages(data?.airwaybillxrays?.paginatorInfo?.hasMorePages || false);
@@ -112,63 +105,26 @@ const ListScreen = () => {
 
   const swipeListRef = useRef<any>(null);
 
-  // Filter list tanpa sorting - gunakan urutan dari backend
+  // Filter list
   const filteredAwbList = useMemo(() => {
     let list = allAwbData;
-
-    // Jika ada search query, lakukan filter
     if (searchQuery.trim() !== '') {
       const lower = searchQuery.toLowerCase();
       list = allAwbData.filter((item: any) =>
-        item.airwaybill_number.toLowerCase().includes(lower)
+        item.airwaybill_number.toLowerCase().includes(lower) ||
+        (item.hawb && item.hawb.toLowerCase().includes(lower))
       );
     }
-
-    // Tidak perlu sorting, gunakan urutan dari backend (seharusnya sudah terbaru dulu)
     return list;
   }, [allAwbData, searchQuery]);
-
-  // Debug log untuk memantau urutan dari backend
-  useEffect(() => {
-    if (allAwbData.length > 0) {
-      console.log('📊 Data order from backend:');
-      console.log('First 3 items:',
-        allAwbData.slice(0, 3).map(item => ({
-          awb: item.airwaybill_number,
-          date: new Date(item.created_at).toLocaleDateString(),
-          full: new Date(item.created_at).toISOString()
-        }))
-      );
-      console.log('Last 3 items:',
-        allAwbData.slice(-3).map(item => ({
-          awb: item.airwaybill_number,
-          date: new Date(item.created_at).toLocaleDateString(),
-          full: new Date(item.created_at).toISOString()
-        }))
-      );
-
-      // Cek apakah urutan sudah benar (terbaru dulu)
-      const firstDate = new Date(allAwbData[0].created_at).getTime();
-      const lastDate = new Date(allAwbData[allAwbData.length - 1].created_at).getTime();
-      const isCorrectOrder = firstDate > lastDate;
-      console.log(`📈 Order correct (newest first): ${isCorrectOrder ? '✅ YES' : '❌ NO'}`);
-    }
-  }, [allAwbData]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      // Reset infinite scroll state
       setCurrentPage(1);
       setAllAwbData([]);
       setHasMorePages(true);
-
-      const refreshData = await refetch({
-        first: 20,
-        page: 1,
-      });
-
-      // Gunakan data dari backend tanpa sorting
+      const refreshData = await refetch({ first: 20, page: 1 });
       if (refreshData?.data?.airwaybillxrays?.data) {
         setAllAwbData(refreshData.data.airwaybillxrays.data);
       }
@@ -180,20 +136,13 @@ const ListScreen = () => {
 
   const handleSearch = async (query: string) => {
     setSearchQuery(query);
-
-    // If search is being cleared, refetch all data
     if (query === '') {
       setRefreshing(true);
       setCurrentPage(1);
       setAllAwbData([]);
       setHasMorePages(true);
-
       try {
-        const refreshData = await refetch({
-          first: 20,
-          page: 1,
-        });
-
+        const refreshData = await refetch({ first: 20, page: 1 });
         if (refreshData?.data?.airwaybillxrays?.data) {
           setAllAwbData(refreshData.data.airwaybillxrays.data);
           setHasMorePages(refreshData.data.airwaybillxrays.paginatorInfo?.hasMorePages || false);
@@ -203,11 +152,6 @@ const ListScreen = () => {
       } finally {
         setRefreshing(false);
       }
-    } else {
-      // For new search query, reset infinite scroll states
-      setCurrentPage(1);
-      setAllAwbData([]);
-      setHasMorePages(true);
     }
   };
 
@@ -223,26 +167,18 @@ const ListScreen = () => {
 
   const loadMoreData = async () => {
     if (loadingMore || !hasMorePages) return;
-
     setLoadingMore(true);
     const nextPage = currentPage + 1;
-
     try {
-      const result = await fetchMore({
-        variables: {
-          first: 20,
-          page: nextPage,
-        },
+      await fetchMore({
+        variables: { first: 20, page: nextPage },
         updateQuery: (previousResult, { fetchMoreResult }) => {
           const previousData = previousResult?.airwaybillxrays?.data || [];
           const newData = fetchMoreResult?.airwaybillxrays?.data || [];
           const hasMore = fetchMoreResult?.airwaybillxrays?.paginatorInfo?.hasMorePages || false;
-
-          // Update state - gabungkan data tanpa sorting (percaya pada backend)
           setCurrentPage(nextPage);
           setAllAwbData([...previousData, ...newData]);
           setHasMorePages(hasMore);
-
           return {
             airwaybillxrays: {
               ...fetchMoreResult.airwaybillxrays,
@@ -261,255 +197,140 @@ const ListScreen = () => {
   const handleScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const scrollY = e.nativeEvent.contentOffset.y;
     setShowScrollTop(scrollY > 200);
-
-    // Track if user has scrolled down
-    if (scrollY > 100) {
-      setHasScrolledDown(true);
-    }
-
-    // Check if scrolled to top after scrolling down (reload trigger)
+    if (scrollY > 100) setHasScrolledDown(true);
     if (scrollY === 0 && hasScrolledDown && !refreshing && !graphQLLoading) {
       setHasScrolledDown(false);
       onRefresh();
     }
-
-    // Infinite scroll detection
     const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 1000; // Load more when 1000px from bottom
-
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 1000;
     if (isCloseToBottom && hasMorePages && !loadingMore && !graphQLLoading) {
       loadMoreData();
     }
   };
 
-  // Loading state - hanya untuk auth loading, GraphQL loading ditampilkan dengan subtle
+  // Loading state
   if (authLoading) {
     return (
-      <StatusBarSafeArea>
-        <Box flex={1} bg="white">
-          <LinearGradient
-            colors={['#F8FAFC', '#F1F5F9', '#FFFFFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={{ flex: 1 }}
-          >
-            <VStack flex={1} alignItems="center" justifyContent="center">
-              <Box
-                w="$16"
-                h="$16"
-                borderRadius="$xl"
-                bg="#EFF6FF"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <PackageIcon size={40} color="#0284C7" />
-              </Box>
-              <Text mt="$4" color="#64748B" fontSize="$lg">
-                Loading...
-              </Text>
-            </VStack>
-          </LinearGradient>
-        </Box>
-      </StatusBarSafeArea>
+      <View style={{ flex: 1, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' }}>
+        <PackageIcon size={40} color="#3b82f6" />
+        <Text style={{ marginTop: 12, color: '#64748b' }}>Loading...</Text>
+      </View>
     );
   }
 
   // Error state
   if (error) {
     return (
-      <StatusBarSafeArea>
-        <Box flex={1} bg="white">
-          <LinearGradient
-            colors={['#F8FAFC', '#F1F5F9', '#FFFFFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={{ flex: 1 }}
-          >
-            <VStack flex={1} alignItems="center" justifyContent="center" p="$4">
-              <Box
-                w="$16"
-                h="$16"
-                borderRadius="$xl"
-                bg="#FEF2F2"
-                alignItems="center"
-                justifyContent="center"
-              >
-                <PackageIcon size={40} color="#DC2626" />
-              </Box>
-              <Text mt="$4" color="#64748B" fontSize="$lg" textAlign="center">
-                Error loading AWB list
-              </Text>
-              <Text mt="$2" color="#94A3B8" fontSize="$sm" textAlign="center">
-                {error.message}
-              </Text>
-              <TouchableOpacity onPress={onRefresh} style={{ marginTop: 20 }}>
-                <Box px="$4" py="$2" bg="#0284C7" borderRadius="$md">
-                  <Text color="white">Retry</Text>
-                </Box>
-              </TouchableOpacity>
-            </VStack>
-          </LinearGradient>
-        </Box>
-      </StatusBarSafeArea>
+      <View style={{ flex: 1, backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
+          <PackageIcon size={40} color="#ef4444" />
+          <Text style={{ marginTop: 12, color: '#64748b', fontSize: 16 }}>Error loading Shipments</Text>
+          <Text style={{ marginTop: 8, color: '#94a3b8', fontSize: 13, textAlign: 'center' }}>{error.message}</Text>
+          <TouchableOpacity onPress={onRefresh} style={{ marginTop: 20, backgroundColor: '#3b82f6', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 }}>
+            <Text style={{ color: 'white', fontWeight: '600' }}>Retry</Text>
+          </TouchableOpacity>
+      </View>
     );
   }
 
   return (
-    <Box flex={1} bg="white">
-      {/* White background gradient */}
-      <LinearGradient
-        colors={['#F8FAFC', '#F1F5F9', '#FFFFFF']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          height: 300,
-        }}
-      />
-
+    <View style={{ flex: 1 }}>
       <StatusBarSafeArea>
-        <Box flex={1} style={{ padding: 10 }}>
-          {/* Gradient Header */}
-          <Box
-            asChild
-            shadow="$2"
-            style={{
-              zIndex: 10,
-              borderRadius: 16,
-              overflow: 'hidden',
-            }}
-          >
-            <LinearGradient
-              colors={['#0EA5E9', '#0284C7']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            >
-              <VStack mb="$md" space="md" p="$4">
-                {/* Row: title + filter */}
-                <Box
-                  flexDirection="row"
-                  alignItems="center"
-                  justifyContent="space-between"
-                  mb="$2"
-                >
-                  {/* Left: icon + text */}
-                  <Box flexDirection="row" alignItems="center">
-                    <Box
-                      w="$12"
-                      h="$12"
-                      borderRadius="$2xl"
-                      bg="rgba(255, 255, 255, 0.2)"
-                      alignItems="center"
-                      justifyContent="center"
-                      shadow="$2"
+          {/* Custom Header Section */}
+          <Box style={{ zIndex: 10, backgroundColor: '#3b82f6', borderBottomLeftRadius: 32, borderBottomRightRadius: 32 }}>
+               <VStack mb="$4" space="md" p="$5">
+                 {/* Row: title + filter */}
+                 <Box
+                   flexDirection="row"
+                   alignItems="center"
+                   justifyContent="space-between"
+                   mb="$4"
+                 >
+                   {/* Left: icon + text */}
+                   <Box flexDirection="row" alignItems="center">
+                     <Box
+                       w="$12"
+                       h="$12"
+                       borderRadius="$xl"
+                       bg="rgba(255, 255, 255, 0.2)"
+                       alignItems="center"
+                       justifyContent="center"
+                     >
+                       <PackageIcon size={24} color="#FFFFFF" />
+                     </Box>
+                     <Text style={{ fontWeight: '800', fontSize: 24, color: '#FFFFFF', marginLeft: 12 }}>
+                        Shipments
+                     </Text>
+                   </Box>
+ 
+                   {/* Right: filter button */}
+                   <TouchableOpacity 
+                       style={{ 
+                          width: 44, 
+                          height: 44, 
+                          borderRadius: 22, 
+                          backgroundColor: 'rgba(255, 255, 255, 0.15)', 
+                          alignItems: 'center', 
+                          justifyContent: 'center',
+                          borderWidth: 1,
+                          borderColor: 'rgba(255, 255, 255, 0.2)'
+                       }}
+                   >
+                       <FilterIcon size={20} color="#FFFFFF" />
+                   </TouchableOpacity>
+                 </Box>
+ 
+                 {/* Search Bar */}
+                 <Box style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 16, paddingHorizontal: 16, paddingVertical: 2, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' }}>
+                    <SearchIcon size={20} color="rgba(255,255,255,0.7)" />
+                    <Input
+                       variant="outline"
+                       style={{ flex: 1, height: 44, marginLeft: 8, borderWidth: 0 }}
+                       borderColor="transparent"
                     >
-                      <PackageIcon size={24} color="#FFFFFF" />
-                    </Box>
-                    <VStack ml="$3" space="xs">
-                      <Text fontWeight="$bold" fontSize="$2xl" color="#FFFFFF">
-                        AWB List
-                      </Text>
-                      <Text color="rgba(255, 255, 255, 0.8)" fontSize="$sm">
-                        Manage your airwaybills
-                      </Text>
-                    </VStack>
-                  </Box>
-
-                  {/* Right: filter button */}
-                  <TouchableOpacity style={styles.filterButton}>
-                    <Box
-                      w="$10"
-                      h="$10"
-                      borderRadius="$full"
-                      bg="rgba(255, 255, 255, 0.2)"
-                      alignItems="center"
-                      justifyContent="center"
-                    >
-                      <FilterIcon size={18} color="#FFFFFF" />
-                    </Box>
-                  </TouchableOpacity>
-                </Box>
-
-                {/* Search Bar */}
-                <Box>
-                  <Input
-                    borderRadius="$2xl"
-                    bg="rgba(255, 255, 255, 0.9)"
-                    py="sm"
-                    px="md"
-                    borderWidth={1}
-                    borderColor="rgba(255, 255, 255, 0.3)"
-                    shadow="$1"
-                  >
-                    <InputSlot pl="$2">
-                      <InputIcon as={SearchIcon} color="$text400" />
-                    </InputSlot>
-
-                    <InputField
-                      placeholder="Search by AWB number"
-                      value={searchQuery}
-                      onChangeText={handleSearch}
-                      color="$text900"
-                      fontSize="$md"
-                    />
-
+                      <InputField 
+                        placeholder="Search AWB or HAWB..." 
+                        placeholderTextColor="rgba(255,255,255,0.6)"
+                        value={searchQuery}
+                        onChangeText={handleSearch}
+                        color="white"
+                        style={{ fontSize: 15 }}
+                      />
+                    </Input>
                     {searchQuery.length > 0 && (
-                      <InputSlot pr="$3">
                         <TouchableOpacity onPress={() => handleSearch('')}>
-                          <Text color="$text400" fontSize="$sm">
-                            Clear
-                          </Text>
+                            <Text style={{ color: "rgba(255,255,255,0.8)", fontSize: 13 }}>Clear</Text>
                         </TouchableOpacity>
-                      </InputSlot>
                     )}
-                  </Input>
-                </Box>
-              </VStack>
-            </LinearGradient>
+                 </Box>
+               </VStack>
           </Box>
-
+ 
           {/* Content with SwipeList handling its own scrolling */}
-          <Box style={{ flex: 1, paddingTop: 12 }} backgroundColor="transparent">
-            {/* Subtle loading indicator for GraphQL loading */}
-            {graphQLLoading && filteredAwbList.length === 0 && (
-              <Box alignItems="center" py="$8">
-                <VStack alignItems="center" space="sm">
-                  <Spinner size="small" color="$primary600" />
-                  <Text color="$text500" fontSize="$sm">Loading data...</Text>
-                </VStack>
-              </Box>
-            )}
-
-            {/* Stats Row - hanya tampilkan jika ada data atau tidak sedang loading awal */}
-            {(!graphQLLoading || filteredAwbList.length > 0) && (
+          <Box style={{ flex: 1 }} backgroundColor="transparent">
+            {/* Stats Row */}
               <HStack
                 justifyContent="space-between"
                 alignItems="center"
-                mb={10}
-                mt={4}
+                px="$5"
+                pt="$6"
+                pb="$2"
               >
-                <HStack alignItems="center" space="sm">
-                  <Badge bg="$primary100" px="$3" py="$1" borderRadius="$full">
-                    <Text color="$primary600" fontWeight="$600" fontSize="$sm">
-                      {filteredAwbList.length} items
-                    </Text>
-                  </Badge>
-
-                  {filteredAwbList.length > 0 && (
-                    <HStack alignItems="center" space="xs">
-                      <CalendarIcon size={12} color="#6B7280" />
-                      <Text fontSize="$xs" color="$text400">
-                        Newest first
-                      </Text>
-                    </HStack>
-                  )}
-                </HStack>
+                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#6B7280', letterSpacing: 0.5 }}>ACTIVE LOADS</Text>
+                 
+                 <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#9CA3AF', marginRight: 4 }}>Newest</Text>
+                 </TouchableOpacity>
               </HStack>
-            )}
 
+            {/* Subtle loading indicator for GraphQL loading */}
+            {graphQLLoading && filteredAwbList.length === 0 && (
+              <Box alignItems="center" py="$8">
+                  <Spinner size="small" color="$primary600" />
+                  <Text style={{ color: "#64748b", fontSize: 14, marginTop: 8 }}>Loading Shipments...</Text>
+              </Box>
+            )}
+ 
             {/* AWB List / Empty State */}
             {filteredAwbList.length > 0 ? (
               <>
@@ -521,11 +342,12 @@ const ListScreen = () => {
                   refreshing={refreshing}
                   onScroll={handleScroll}
                   contentContainerStyle={{
+                    paddingHorizontal: 20,
+                    paddingTop: 8,
                     paddingBottom: fabBottomPosition + (loadingMore ? 100 : 40),
                   }}
                 />
-
-                {/* Loading indicator for infinite scroll */}
+ 
                 {loadingMore && (
                   <Box
                     alignItems="center"
@@ -540,34 +362,34 @@ const ListScreen = () => {
                   >
                     <VStack alignItems="center" space="sm">
                       <Spinner size="small" color="$primary600" />
-                      <Text color="$text500" fontSize="$sm">Loading more...</Text>
+                      <Text style={{ color: "#64748b", fontSize: 14 }}>Loading more...</Text>
                     </VStack>
                   </Box>
                 )}
-
-                {/* End of data indicator */}
+ 
                 {!hasMorePages && filteredAwbList.length > 0 && (
                   <Box alignItems="center" py="$2">
-                    <Text color="$text400" fontSize="$xs">End of results</Text>
+                    <Text style={{ color: "#9ca3af", fontSize: 12 }}>End of results</Text>
                   </Box>
                 )}
               </>
             ) : (
-              <Box mt="$8">
-                <EmptyState
-                  title="No AWB Found"
-                  subtitle={
-                    searchQuery
-                      ? 'Try adjusting your search terms'
-                      : 'Capture your first airwaybill using the + button'
-                  }
-                  icon={searchQuery ? SearchIcon : PackageIcon}
-                />
-              </Box>
+                !graphQLLoading && (
+                  <Box mt="$8" px="$5">
+                    <EmptyState
+                      title="No Shipments"
+                      subtitle={
+                        searchQuery
+                          ? 'Try adjusting your search terms'
+                          : 'Your assigned shipments will appear here.'
+                      }
+                      icon={searchQuery ? SearchIcon : PackageIcon}
+                    />
+                  </Box>
+                )
             )}
           </Box>
-        </Box>
-
+ 
         {/* Scroll To Top Button */}
         {showScrollTop && (
           <TouchableOpacity
@@ -584,30 +406,29 @@ const ListScreen = () => {
               w="$12"
               h="$12"
               borderRadius="$full"
-              bg="$primary600"
+              bg="#3b82f6"
               alignItems="center"
               justifyContent="center"
-              shadow="$4"
             >
               <ArrowUpIcon size={20} color="#FFFFFF" />
             </Box>
           </TouchableOpacity>
         )}
       </StatusBarSafeArea>
-    </Box>
+    </View>
   );
 };
 
-const styles = {
-  filterButton: {
-    borderRadius: 50,
-  },
+const styles = StyleSheet.create({
   scrollToTopButton: {
-    position: 'absolute' as const,
+    position: 'absolute',
     right: 20,
     borderRadius: 50,
     zIndex: 999,
   },
-};
+  filterButton: {
+    borderRadius: 50,
+  }
+});
 
 export default ListScreen;

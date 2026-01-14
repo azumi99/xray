@@ -1,9 +1,9 @@
 import { formatDateTime } from '@/utils/formatDate';
 import { gql, useMutation } from '@apollo/client';
+import { Trash2Icon } from 'lucide-react-native';
 import React from 'react';
 import { Alert, RefreshControl, Text, TouchableOpacity, View } from 'react-native';
 import { SwipeListView } from 'react-native-swipe-list-view';
-import { Trash2Icon } from 'lucide-react-native';
 import AwbListItem from './AwbListItem';
 
 // GraphQL mutation untuk delete AWB
@@ -108,18 +108,19 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
         backgroundColor: 'white',
         borderRadius: 16,
         marginBottom: 8,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 4,
-        elevation: 3,
+        // shadowColor: '#000',
+        // shadowOffset: { width: 0, height: 2 },
+        // shadowOpacity: 0.1,
+        // shadowRadius: 4,
+        // elevation: 3,
       }}>
         <AwbListItem
           awbNumber={item.airwaybill_number || 'N/A'}
-          date={formatDateTime(new Date(item.created_at))}
+          date={formatDateTime(item.created_at)}
+          hawb={item.hawb || 'N/A'}
           onPress={() => onItemClick(item.id)}
           index={index}
-          status="Pending"
+          status="new"
         />
       </View>
     );
@@ -131,37 +132,50 @@ const SwipeList = React.forwardRef<any, SwipeListProps>(({
       flex: 1,
       flexDirection: 'row',
       justifyContent: 'flex-end',
-      alignItems: 'center',
+      alignItems: 'stretch',
       marginBottom: 8,
+      paddingLeft: 20
     }}>
       <View
         style={{
-          backgroundColor: '#DC2626',
           width: 75,
-          height: '100%',
-          justifyContent: 'center',
-          alignItems: 'center',
-          borderTopRightRadius: 16,
-          borderBottomRightRadius: 16,
+          marginTop: 0, 
+          marginBottom: 0,
         }}
       >
         <TouchableOpacity
           style={{
             flex: 1,
-            width: '100%',
-            height: '100%',
+            backgroundColor: '#ef4444', 
             justifyContent: 'center',
             alignItems: 'center',
+            borderTopRightRadius: 20,
+            borderBottomRightRadius: 20,
+            marginLeft: -20, // Negative margin to tuck behind or flow properly
+            width: 95
           }}
           onPress={() => handleDelete(item.id, item.airwaybill_number)}
+          activeOpacity={0.9}
         >
-          <Trash2Icon size={20} color="#FFFFFF" />
-          <Text style={{
-            color: '#FFF',
-            fontSize: 12,
-            fontWeight: '600',
-            marginTop: 4,
-          }}>Delete</Text>
+          <View style={{ alignItems: 'center', marginLeft: 15 }}>
+            <View style={{
+                 width: 32, 
+                 height: 32, 
+                 backgroundColor: 'rgba(255,255,255,0.2)', 
+                 borderRadius: 8, 
+                 alignItems: 'center', 
+                 justifyContent: 'center',
+                 marginBottom: 4
+            }}>
+              <Trash2Icon size={18} color="#FFFFFF" />
+            </View>
+            <Text style={{
+              color: '#FFF',
+              fontSize: 10,
+              fontWeight: '700',
+              textTransform: 'uppercase'
+            }}>Delete</Text>
+          </View>
         </TouchableOpacity>
       </View>
     </View>
