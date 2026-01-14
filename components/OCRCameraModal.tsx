@@ -1,11 +1,10 @@
 import { sendAwb } from '@/lib/api/services/agentScan';
-import { gql, useMutation } from '@apollo/client';
+import { gql, useMutation, useQuery } from '@apollo/client';
 import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
-import * as ImagePicker from 'expo-image-picker';
 import { extractTextFromImage } from 'expo-text-extractor';
 import { Camera as CameraIcon, Check, Copy, FlipHorizontal, Maximize2, Plus, X, Zap, ZapOff } from 'lucide-react-native';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +21,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '../lib/store/auth';
-import { useThemeStore } from '../lib/store/themeStore';
+
+// Interface untuk WatchedFile dari GraphQL
+interface WatchedFile {
+    id: string;
+    filepath: string;
+    assign_id: string | null;
+    created_at: string;
+}
 
 // Interface untuk X-ray image dengan status tracking
 interface XrayImage {
@@ -60,6 +66,33 @@ const CREATE_AIRWAYBILL_DETAIL_MUTATION = gql`
   }
 `;
 
+// GraphQL Query untuk WatchedFiles
+const GET_WATCHED_FILES_QUERY = gql`
+  query GetWatchedFiles {
+    watchedFiles(first: 20) {
+      data {
+        id
+        filepath
+        link
+        assign_id
+        created_at
+      }
+    }
+  }
+`;
+
+// GraphQL Mutation untuk CreateWatchedFile
+const CREATE_WATCHED_FILE_MUTATION = gql`
+  mutation CreateWatchedFile($input: CreateWatchedFileInput!) {
+    createWatchedFile(input: $input) {
+      id
+      filepath
+      assign_id
+      created_at
+    }
+  }
+`;
+
 
 type OCRCameraModalProps = {
     visible: boolean;
@@ -79,18 +112,55 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [copied, setCopied] = useState(false);
     const [xrayImages, setXrayImages] = useState<XrayImage[]>([]);
     const [isSaving, setIsSaving] = useState(false);
-    const [isUploadingXray, setIsUploadingXray] = useState(false);
     const cameraRef = useRef<CameraView>(null);
+    const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
     console.log('OCRCameraModal rendered with visible:', xrayImages);
 
     // Get session data for authorization
     const { session } = useAuth();
-    const { theme } = useThemeStore();
-    const isDark = theme === 'dark';
 
     // GraphQL mutation hooks
     const [createAirwaybill] = useMutation(CREATE_AIRWAYBILL_MUTATION);
     const [createAirwaybillDetail] = useMutation(CREATE_AIRWAYBILL_DETAIL_MUTATION);
+
+    // Query watched files - fetch otomatis saat component visible
+    const { data: watchedFilesData, refetch: refetchWatchedFiles } = useQuery(GET_WATCHED_FILES_QUERY, {
+        fetchPolicy: 'cache-and-network',
+        variables: { first: 20 },
+        skip: !visible,
+    });
+
+    // Mutation untuk create watched file
+    const [createWatchedFile] = useMutation(CREATE_WATCHED_FILE_MUTATION);
+
+    const watchedFiles = watchedFilesData?.watchedFiles?.data || [];
+
+    // Polling setiap 5 detik untuk cek watched files baru
+    useEffect(() => {
+        if (visible) {
+            // Refetch immediately saat modal visible
+            refetchWatchedFiles();
+
+            // Setup polling interval setiap 5 detik
+            pollingIntervalRef.current = setInterval(() => {
+                refetchWatchedFiles();
+            }, 5000);
+
+            // Cleanup interval saat modal tidak visible atau unmount
+            return () => {
+                if (pollingIntervalRef.current) {
+                    clearInterval(pollingIntervalRef.current);
+                    pollingIntervalRef.current = null;
+                }
+            };
+        } else {
+            // Cleanup saat modal tidak visible
+            if (pollingIntervalRef.current) {
+                clearInterval(pollingIntervalRef.current);
+                pollingIntervalRef.current = null;
+            }
+        }
+    }, [visible, refetchWatchedFiles]);
 
     const toggleFlash = () => {
         setFlash((current) => (current === 'off' ? 'on' : 'off'));
@@ -101,177 +171,20 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     };
 
     const pickXrayImages = async () => {
-        Alert.alert(
-            'Add X-ray Images',
-            'Choose an option to add X-ray images',
-            [
-                {
-                    text: 'Camera',
-                    onPress: () => takeXrayImage(),
-                },
-                {
-                    text: 'Gallery',
-                    onPress: () => pickXrayFromGallery(),
-                },
-                {
-                    text: 'Cancel',
-                    style: 'cancel',
-                },
-            ]
-        );
-    };
-
-    const takeXrayImage = async () => {
-        const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-        if (!permissionResult.granted) {
-            Alert.alert('Permission Required', 'Please grant camera permissions to take X-ray images.');
-            return;
-        }
-
-        const result = await ImagePicker.launchCameraAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets) {
-            const newImage: XrayImage = {
-                id: `camera_${Date.now()}`,
-                uri: result.assets[0].uri,
-                status: 'pending',
-            };
-            setXrayImages(prev => [...prev, newImage]);
-            // Mulai upload otomatis
-            uploadSingleXrayImage(newImage);
-        }
-    };
-
-    const pickXrayFromGallery = async () => {
-        const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-        if (!permissionResult.granted) {
-            Alert.alert('Permission Required', 'Please grant camera roll permissions to upload X-ray images.');
-            return;
-        }
-
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsMultipleSelection: true,
-            quality: 0.8,
-        });
-
-        if (!result.canceled && result.assets) {
-            const newImages: XrayImage[] = result.assets.map(asset => ({
-                id: `gallery_${Date.now()}_${asset.uri}`,
-                uri: asset.uri,
-                status: 'pending',
+        // Langsung tambahkan semua watched files ke xrayImages
+        const newImages: XrayImage[] = watchedFiles
+            .filter(file => !xrayImages.some(img => img.id === file.id))
+            .map(file => ({
+                id: file.id,
+                uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
+                status: 'success' as const,
+                uploadedPath: file.filepath,
             }));
-            setXrayImages(prev => [...prev, ...newImages]);
-
-            // Mulai upload otomatis untuk setiap image
-            newImages.forEach(image => {
-                uploadSingleXrayImage(image);
-            });
-        }
+        setXrayImages(prev => [...prev, ...newImages]);
     };
 
     const removeXrayImage = (id: string) => {
         setXrayImages(prev => prev.filter(img => img.id !== id));
-    };
-
-    // Upload single X-ray image dengan progress tracking
-    const uploadSingleXrayImage = async (xrayImage: XrayImage) => {
-        try {
-            // Update status ke uploading
-            setXrayImages(prev => prev.map(img =>
-                img.id === xrayImage.id ? { ...img, status: 'uploading', progress: 0 } : img
-            ));
-
-            // Check if session exists
-            if (!session) {
-                throw new Error('No authentication token available');
-            }
-
-            // Create FormData for file upload
-            const formData = new FormData();
-            formData.append('image', {
-                uri: xrayImage.uri,
-                type: 'image/jpeg',
-                name: `xray_${Date.now()}.jpg`,
-            } as any);
-
-            // Simulate progress updates
-            const progressInterval = setInterval(() => {
-                setXrayImages(prev => prev.map(img => {
-                    if (img.id === xrayImage.id && img.status === 'uploading') {
-                        const newProgress = (img.progress || 0) + 10;
-                        return newProgress >= 90 ? img : { ...img, progress: newProgress };
-                    }
-                    return img;
-                }));
-            }, 100);
-
-            // Upload image to the API with authorization
-            const response = await fetch(`${process.env.EXPO_PUBLIC_API_BASE_URL}/xray/upload`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'multipart/form-data',
-                    'Authorization': `Bearer ${session}`,
-                },
-                body: formData,
-            });
-
-            clearInterval(progressInterval);
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Upload failed: ${response.status} - ${errorText}`);
-            }
-
-            const result = await response.json();
-
-            // Check if the response contains image_path
-            if (!result.image_path) {
-                console.error('Upload response:', result);
-                throw new Error('No image_path in response');
-            }
-
-            // Update status ke success
-            setXrayImages(prev => prev.map(img =>
-                img.id === xrayImage.id ? {
-                    ...img,
-                    status: 'success',
-                    progress: 100,
-                    uploadedPath: result.image_path
-                } : img
-            ));
-
-            return result.image_path;
-        } catch (error) {
-            console.error('Image upload error:', error);
-
-            // Update status ke error
-            setXrayImages(prev => prev.map(img =>
-                img.id === xrayImage.id ? {
-                    ...img,
-                    status: 'error',
-                    progress: 0,
-                    error: error instanceof Error ? error.message : 'Upload failed'
-                } : img
-            ));
-
-            return null;
-        }
-    };
-
-    // Retry upload untuk image yang gagal
-    const retryUploadXrayImage = (id: string) => {
-        setXrayImages(prev => prev.map(img =>
-            img.id === id ? { ...img, status: 'pending', progress: 0, error: undefined } : img
-        ));
-
-        const imageToRetry = xrayImages.find(img => img.id === id);
-        if (imageToRetry) {
-            uploadSingleXrayImage(imageToRetry);
-        }
     };
 
     // Function to upload AWB image to API
@@ -460,7 +373,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 };
 
 
-     const retakePicture = () => {
+    const retakePicture = () => {
         setCapturedPhoto(null);
         setExtractedText('');
         setCopied(false);
@@ -478,7 +391,6 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         setExtractedText('');
         setXrayImages([]);
         setCopied(false);
-        setIsUploadingXray(false);
         onClose();
     };
 
@@ -500,13 +412,6 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
         if (!extractedText.trim()) {
             Alert.alert('Error', 'Please enter or confirm the AWB number');
-            return;
-        }
-
-        // Check if there are images still uploading
-        const uploadingImages = xrayImages.filter(img => img.status === 'uploading');
-        if (uploadingImages.length > 0) {
-            Alert.alert('Upload in Progress', 'Please wait for all X-ray images to finish uploading.');
             return;
         }
 
@@ -654,18 +559,18 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             <View style={styles.modalContent}>
                 {/* Permission not granted yet */}
                 {!permission && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#111827' : COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
-                        <ActivityIndicator size="large" color={isDark ? '#60A5FA' : COLORS.primary} />
+                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
+                        <ActivityIndicator size="large" color={COLORS.primary} />
                     </SafeAreaView>
                 )}
 
                 {/* Request permission */}
                 {permission && !permission.granted && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#111827' : COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
-                        <View style={[styles.permissionContainer, { backgroundColor: isDark ? '#111827' : COLORS.background }]}>
-                            <CameraIcon width={64} height={64} color={isDark ? '#9CA3AF' : COLORS.gray} />
-                            <Text style={[styles.permissionTitle, { color: isDark ? '#F9FAFB' : COLORS.text }]}>Camera Permission Required</Text>
-                            <Text style={[styles.permissionText, { color: isDark ? '#9CA3AF' : COLORS.textSecondary }]}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
+                        <View style={styles.permissionContainer}>
+                            <CameraIcon width={64} height={64} color={COLORS.gray} />
+                            <Text style={styles.permissionTitle}>Camera Permission Required</Text>
+                            <Text style={styles.permissionText}>
                                 We need access to your camera to scan and extract text
                             </Text>
                             <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
@@ -727,11 +632,11 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 {/* Preview with OCR Results */}
                 {/* Preview with OCR Results */}
                 {capturedPhoto && (
-                    <SafeAreaView style={[styles.resultContainer, { backgroundColor: isDark ? '#111827' : '#FFFFFF' }]} edges={['left', 'right', 'top', 'bottom']}>
+                    <SafeAreaView style={styles.resultContainer} edges={['left', 'right', 'top', 'bottom']}>
                         <View style={styles.resultHeader}>
-                            <Text style={[styles.resultTitle, { color: isDark ? '#F9FAFB' : '#111827' }]}>OCR Result</Text>
-                            <TouchableOpacity onPress={handleClose} style={[styles.closeButton, { backgroundColor: isDark ? '#374151' : 'transparent', borderRadius: 99 }]}>
-                                <X stroke={isDark ? '#F9FAFB' : COLORS.text} width={24} height={24} />
+                            <Text style={styles.resultTitle}>OCR Result</Text>
+                            <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
+                                <X stroke={COLORS.text} width={24} height={24} />
                             </TouchableOpacity>
                         </View>
 
@@ -746,7 +651,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                 keyboardShouldPersistTaps="handled"
                             >
                                 {/* Scanned Image Card */}
-                                <View style={[styles.resultImageCard, { backgroundColor: isDark ? '#1F2937' : '#F3F4F6', borderWidth: isDark ? 1 : 0, borderColor: isDark ? '#374151' : 'transparent' }]}>
+                                <View style={styles.resultImageCard}>
                                     <Image source={{ uri: capturedPhoto }} style={styles.resultImage} />
                                     <View style={styles.scannedBadge}>
                                         <Maximize2 stroke="#FFFFFF" width={12} height={12} />
@@ -756,14 +661,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* AWB Number Input */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={[styles.fieldLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>AWB Number</Text>
-                                    <View style={[styles.inputCard, { backgroundColor: isDark ? '#1F2937' : 'white', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
+                                    <Text style={styles.fieldLabel}>AWB Number</Text>
+                                    <View style={styles.inputCard}>
                                         <TextInput
-                                            style={[styles.inputField, { color: isDark ? '#F9FAFB' : '#111827' }]}
+                                            style={styles.inputField}
                                             value={extractedText}
                                             onChangeText={setExtractedText}
                                             placeholder="000 0000 0000"
-                                            placeholderTextColor={isDark ? '#4B5563' : '#9CA3AF'}
+                                            placeholderTextColor="#9CA3AF"
                                             editable={!isProcessing}
                                         />
                                         <TouchableOpacity onPress={copyToClipboard} style={styles.copyAction}>
@@ -778,14 +683,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* HAWB Number Input */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={[styles.fieldLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>HAWB Number</Text>
-                                    <View style={[styles.inputCard, { backgroundColor: isDark ? '#1F2937' : 'white', borderColor: isDark ? '#374151' : '#E5E7EB' }]}>
+                                    <Text style={styles.fieldLabel}>HAWB Number</Text>
+                                    <View style={styles.inputCard}>
                                         <TextInput
-                                            style={[styles.inputField, { color: isDark ? '#F9FAFB' : '#111827' }]}
+                                            style={styles.inputField}
                                             value={extractedHawb}
                                             onChangeText={setExtractedHawb}
                                             placeholder="Enter HAWB"
-                                            placeholderTextColor={isDark ? '#4B5563' : '#9CA3AF'}
+                                            placeholderTextColor="#9CA3AF"
                                             editable={!isProcessing}
                                         />
                                         {extractedHawb ? (
@@ -798,11 +703,11 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* X-ray Image Upload */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={[styles.fieldLabel, { color: isDark ? '#9CA3AF' : '#6B7280' }]}>X-ray Image</Text>
-                                    <TouchableOpacity onPress={pickXrayImages} style={[styles.addXrayButton, { backgroundColor: isDark ? '#1F2937' : '#F0F9FF', borderColor: isDark ? '#374151' : '#93C5FD' }]}>
+                                    <Text style={styles.fieldLabel}>X-ray Image</Text>
+                                    <TouchableOpacity onPress={pickXrayImages} style={styles.addXrayButton}>
                                         <View style={styles.addXrayContent}>
-                                             <Plus stroke={isDark ? '#60A5FA' : '#3B82F6'} width={20} height={20} />
-                                             <Text style={[styles.addXrayText, { color: isDark ? '#60A5FA' : '#2563EB' }]}>Add X-ray Images</Text>
+                                             <Plus stroke="#3B82F6" width={20} height={20} />
+                                             <Text style={styles.addXrayText}>Add X-ray Images</Text>
                                         </View>
                                     </TouchableOpacity>
                                     
@@ -831,9 +736,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             </ScrollView>
 
                             {/* Footer Actions */}
-                            <View style={[styles.resultFooter, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF', borderTopColor: isDark ? '#374151' : '#F3F4F6' }]}>
-                                <TouchableOpacity style={[styles.btnSecondary, { backgroundColor: isDark ? '#374151' : '#F3F4F6' }]} onPress={retakePicture}>
-                                    <Text style={[styles.btnSecondaryText, { color: isDark ? '#F9FAFB' : '#374151' }]}>Retake</Text>
+                            <View style={styles.resultFooter}>
+                                <TouchableOpacity style={styles.btnSecondary} onPress={retakePicture}>
+                                    <Text style={styles.btnSecondaryText}>Retake</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity 
                                     style={[styles.btnPrimary, (isSaving || isProcessing) && styles.btnDisabled]} 
@@ -851,10 +756,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                         {/* Loading Overlay */}
                         {isProcessing && (
-                            <View style={[styles.loadingOverlay, { backgroundColor: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255, 255, 255, 0.8)' }]}>
-                                <View style={[styles.loadingCard, { backgroundColor: isDark ? '#1F2937' : '#FFFFFF' }]}>
+                            <View style={styles.loadingOverlay}>
+                                <View style={styles.loadingCard}>
                                     <ActivityIndicator size="large" color="#3B82F6" />
-                                    <Text style={[styles.loadingText, { color: isDark ? '#F9FAFB' : '#374151' }]}>{messageLoading || 'Processing...'}</Text>
+                                    <Text style={styles.loadingText}>{messageLoading || 'Processing...'}</Text>
                                 </View>
                             </View>
                         )}

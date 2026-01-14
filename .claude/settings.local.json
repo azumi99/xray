@@ -19,7 +19,21 @@
       "WebSearch",
       "Bash(npx expo export:*)",
       "Bash(tasklist:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(npm run test:e2e:android:build:*)",
+      "Bash(adb:*)",
+      "Bash(gradlew.bat assembleDebug assembleAndroid:*)",
+      "Bash(npx detox test:*)",
+      "Bash(cat:*)",
+      "Bash(powershell.exe:*)",
+      "Bash(cmd.exe /c \"cd android && gradlew.bat assembleAndroidTest -DtestBuildType=debug\")",
+      "Bash(cmd.exe //c \"cd android & gradlew.bat assembleAndroidTest -DtestBuildType=debug\")",
+      "Bash(cmd.exe //c \"cd /d D:\\\\mobile\\\\awbxray\\\\android && call gradlew.bat assembleAndroidTest -DtestBuildType=debug\")",
+      "Bash(cmd.exe:*)",
+      "Bash(./gradlew.bat:*)",
+      "Bash(gradlew.bat:*)",
+      "Bash(yes:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []
