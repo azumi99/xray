@@ -1,29 +1,35 @@
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
 import { gql, useQuery } from '@apollo/client';
 import axios from 'axios';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { ChevronRight, HelpCircle, Key, LogOut, Settings } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Alert, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { useAuth } from '../../lib/store/auth';
 
 // GraphQL query untuk AWB statistics
+const today = new Date().toISOString().split('T')[0];
 const GET_AWB_STATS = gql`
-  query GetAwbList {
-    airwaybillXrays(first: 100, page: 1) {
+ query GetAwbList($first: Int, $page: Int) {
+    airwaybillxrays(first: $first, page: $page, orderBy: { column: CREATED_AT, order: DESC }) {
+      paginatorInfo {
+        count
+        currentPage
+        firstItem
+        hasMorePages
+        lastItem
+        lastPage
+        perPage
+        total
+      }
       data {
         id
         airwaybill_number
         photo_airwaybill
+        hawb
         created_at
         updated_at
         xray_photos_count
-      }
-      paginatorInfo {
-        currentPage
-        lastPage
-        total
       }
     }
   }
@@ -40,17 +46,31 @@ const ProfileScreen = () => {
 
   // GraphQL query untuk AWB statistics
   const {
-    data: awbData,
-    loading: awbLoading,
-    error: awbError,
-  } = useQuery(GET_AWB_STATS, {
-    skip: !session,
-    fetchPolicy: 'no-cache',
-    notifyOnNetworkStatusChange: true,
-  });
+      data,
+      loading: awbLoading,
+      error,
+      refetch,
+      fetchMore,
+    } = useQuery(GET_AWB_STATS, {
+      skip: !session,
+      variables: {
+        first: 50, // Load 20 items per page
+        page: 1,
+      },
+      fetchPolicy: 'no-cache',
+      notifyOnNetworkStatusChange: true,
+      onError: (error) => {
+        console.log('GraphQL Error:', JSON.stringify(error, null, 2));
+      },
+      onCompleted: (data) => {
+        
+      }
+    });
 
-  const awbList = awbData?.airwaybillXrays?.data || [];
-  const totalAwb = awbData?.airwaybillXrays?.paginatorInfo?.total || 0;
+  const awbList = data?.airwaybillXrays?.data || [];
+  const totalAwb = data?.airwaybillxrays?.paginatorInfo?.total || 0;
+
+  console.log('AWB Data:', data?.airwaybillxrays?.paginatorInfo?.total);
 
   // Calculate completed AWBs (yang memiliki xray_photos_count > 0)
   const completedAwb = awbList.filter((awb: any) => awb.xray_photos_count > 0).length;
@@ -132,298 +152,217 @@ const ProfileScreen = () => {
 
   return (
     <StatusBarSafeArea>
-      <View style={styles.container}>
+      <View style={{ flex: 1, backgroundColor: '#f9fafb' }}>
         <ScrollView
-          style={styles.scrollView}
+          style={{ flex: 1 }}
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={{ paddingBottom: 100, alignItems: 'center' }}
         >
-          {/* Header */}
-          <LinearGradient
-            colors={['#E0F2FE', '#F0F9FF', '#FFFFFF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 0, y: 1 }}
-            style={styles.header}
-          >
+          {/* Header Section */}
+          <View style={{ alignItems: 'center', marginTop: 40, marginBottom: 32 }}>
             {/* Avatar */}
-            <View style={styles.avatarContainer}>
-              <View style={[styles.avatar, styles.avatarWithGradient]}>
-                <Text style={styles.avatarText}>
+            <View style={{ position: 'relative', marginBottom: 16 }}>
+              <View style={{
+                width: 100,
+                height: 100,
+                borderRadius: 50,
+                backgroundColor: '#e0f2fe',
+                alignItems: 'center',
+                justifyContent: 'center',
+                borderWidth: 1,
+                borderColor: '#e0f2fe'
+              }}>
+                <Text style={{ fontSize: 36, fontWeight: '400', color: '#0284c7' }}>
                   {loading || !userInfo ? '...' :
-                   userInfo?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 2) || 'U'
+                   userInfo?.name?.split(' ').map((n: string) => n[0]).join('').toUpperCase().slice(0, 1) || 'A'
                   }
                 </Text>
               </View>
+              {/* Online indicator */}
+              <View style={{
+                position: 'absolute',
+                bottom: 5,
+                right: 5,
+                width: 16,
+                height: 16,
+                borderRadius: 8,
+                backgroundColor: '#22c55e',
+                borderWidth: 2,
+                borderColor: '#ffffff'
+              }} />
             </View>
 
             {/* User Info */}
-            <Text style={[styles.userName, styles.userNameGradient]}>
-              {loading || !userInfo ? 'Loading...' : userInfo?.name || 'Unknown User'}
+            <Text style={{ fontSize: 20, fontWeight: '700', color: '#111827', marginBottom: 4 }}>
+              {loading || !userInfo ? 'Loading...' : userInfo?.name || 'Admin User'}
             </Text>
-            <Text style={styles.userEmail}>
-              {loading || !userInfo ? 'Loading...' : userInfo?.email || 'No email'}
+            <Text style={{ fontSize: 13, color: '#9ca3af' }}>
+              {loading || !userInfo ? 'Loading...' : userInfo?.email || 'admin@email.com'}
             </Text>
 
             {/* Stats */}
-            <View style={styles.statsContainer}>
-              {stats.map((stat, index) => (
-                <View key={index} style={styles.statItem}>
-                  <Text style={[styles.statValue, styles.statValueGradient]}>{stat.value}</Text>
-                  <Text style={styles.statLabel}>{stat.label}</Text>
-                </View>
-              ))}
-            </View>
-          </LinearGradient>
-
-          {/* Content */}
-          <View style={styles.content}>
-            {/* Menu Items */}
-            <View style={styles.section}>
-              {menuItems.map((item, index) => {
-                const IconComponent = item.icon;
-                return (
-                  <TouchableOpacity
-                    key={index}
-                    style={styles.menuItem}
-                    onPress={item.onPress}
-                    activeOpacity={0.7}
-                  >
-                    <View style={styles.menuIcon}>
-                      <IconComponent size={20} color={colors.primary} />
-                    </View>
-                    <Text style={styles.menuText}>{item.label}</Text>
-                    <ChevronRight size={18} color={colors.textLight} />
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Password Section */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Change Password</Text>
-
-              <View style={styles.form}>
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>Current Password</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter current password"
-                    value={oldPassword}
-                    onChangeText={setOldPassword}
-                    secureTextEntry
-                    placeholderTextColor={colors.textLight}
-                  />
-                </View>
-
-                <View style={styles.inputGroup}>
-                  <Text style={styles.inputLabel}>New Password</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter new password"
-                    value={newPassword}
-                    onChangeText={setNewPassword}
-                    secureTextEntry
-                    placeholderTextColor={colors.textLight}
-                  />
-                </View>
-
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={handleChangePassword}
-                  activeOpacity={0.8}
-                >
-                  <Key size={18} color={colors.white} />
-                  <Text style={styles.buttonText}>Update Password</Text>
-                </TouchableOpacity>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 32, gap: 40 }}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 28, fontWeight: '300', color: '#1f2937', marginBottom: 4 }}>
+                  {awbLoading ? "..." : totalAwb.toString()}
+                </Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  TOTAL AWB
+                </Text>
+              </View>
+              <View style={{ width: 1, height: 40, backgroundColor: '#f3f4f6' }} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 28, fontWeight: '300', color: '#1f2937', marginBottom: 4 }}>
+                  {awbLoading ? "..." : completedAwb.toString()}
+                </Text>
+                <Text style={{ fontSize: 10, fontWeight: '700', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1 }}>
+                  COMPLETED
+                </Text>
               </View>
             </View>
+          </View>
 
-            {/* Logout Button */}
-            <TouchableOpacity
-              style={styles.logoutButton}
-              onPress={handleLogout}
-              activeOpacity={0.8}
+          {/* Menu Items */}
+          <View style={{ width: '90%', gap: 16, marginBottom: 24 }}>
+            {/* General Settings */}
+            <TouchableOpacity 
+              style={{
+                backgroundColor: '#ffffff',
+                padding: 20,
+                borderRadius: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.02,
+                shadowRadius: 2,
+                elevation: 1
+              }}
+              onPress={() => console.log('Settings')}
             >
-              <LogOut size={18} color={colors.red} />
-              <Text style={styles.logoutText}>Sign Out</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ width: 24, alignItems: 'center' }}>
+                   <Settings size={24} color="#9ca3af" />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: '#1f2937', marginBottom: 2 }}>General Settings</Text>
+                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>Notifications, privacy, language</Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color="#d1d5db" />
+            </TouchableOpacity>
+
+            {/* Help & Support */}
+            <TouchableOpacity 
+              style={{
+                backgroundColor: '#ffffff',
+                padding: 20,
+                borderRadius: 16,
+                flexDirection: 'row',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                shadowColor: '#000',
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.02,
+                shadowRadius: 2,
+                elevation: 1
+              }}
+              onPress={() => console.log('Help')}
+            >
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ width: 24, alignItems: 'center' }}>
+                   <HelpCircle size={24} color="#9ca3af" />
+                </View>
+                <View>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: '#1f2937', marginBottom: 2 }}>Help & Support</Text>
+                  <Text style={{ fontSize: 12, color: '#9ca3af' }}>FAQ, contact us</Text>
+                </View>
+              </View>
+              <ChevronRight size={20} color="#d1d5db" />
             </TouchableOpacity>
           </View>
+
+          {/* Security Section */}
+          <View style={{ width: '90%', backgroundColor: '#ffffff', borderRadius: 24, padding: 24,  shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.02, shadowRadius: 2, elevation: 1 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 }}>
+               <Key size={20} color="#0088dd" fill="#0088dd" /> 
+               <Text style={{ fontSize: 16, fontWeight: '600', color: '#111827' }}>Security</Text>
+            </View>
+
+            <View style={{ gap: 20 }}>
+              <View>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>Current Password</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: '#f3f4f6',
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    fontSize: 14,
+                    color: '#1f2937'
+                  }}
+                  placeholder="Enter current password"
+                  value={oldPassword}
+                  onChangeText={setOldPassword}
+                  secureTextEntry
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+
+              <View>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: '#9ca3af', textTransform: 'uppercase', marginBottom: 8, letterSpacing: 0.5 }}>New Password</Text>
+                <TextInput
+                  style={{
+                    backgroundColor: '#f3f4f6',
+                    borderRadius: 12,
+                    paddingHorizontal: 16,
+                    paddingVertical: 14,
+                    fontSize: 14,
+                    color: '#1f2937'
+                  }}
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  placeholderTextColor="#9ca3af"
+                />
+              </View>
+
+              <TouchableOpacity
+                style={{
+                  backgroundColor: '#0088dd',
+                  borderRadius: 99,
+                  paddingVertical: 14,
+                  alignItems: 'center',
+                  marginTop: 8
+                }}
+                onPress={handleChangePassword}
+                activeOpacity={0.9}
+              >
+                <Text style={{ fontSize: 15, fontWeight: '600', color: '#ffffff' }}>Update Password</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+           {/* Logout Button (Hidden from main visible rect in screenshot but likely needed) */}
+            <TouchableOpacity
+              style={{ padding: 16, marginTop: 16 }}
+              onPress={handleLogout}
+              activeOpacity={0.7}
+            >
+               {/* <LogOut size={20} color="#ef4444" /> */}
+               <View style={{alignItems: 'center'}}>
+                 <View style={{ width: 40, height: 40, backgroundColor: '#fef2f2', borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginBottom: 8 }}>
+                    <LogOut size={20} color="#ef4444" />
+                 </View>
+                  {/* <Text style={{ fontSize: 12, fontWeight: '600', color: '#ef4444' }}>Sign Out</Text> */}
+               </View>
+            </TouchableOpacity>
+
         </ScrollView>
       </View>
     </StatusBarSafeArea>
   );
 };
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#F8FAFC',
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 100,
-  },
-  header: {
-    paddingTop: 24,
-    paddingBottom: 32,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-  },
-  avatarContainer: {
-    marginBottom: 16,
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarWithGradient: {
-    backgroundColor: '#0284C7',
-    shadowColor: '#0284C7',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  userName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 4,
-  },
-  userNameGradient: {
-    color: '#0284C7',
-  },
-  userEmail: {
-    fontSize: 14,
-    color: '#6B7280',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 40,
-  },
-  statItem: {
-    alignItems: 'center',
-  },
-  statValue: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  statValueGradient: {
-    color: '#0284C7',
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 2,
-  },
-  content: {
-    padding: 16,
-    gap: 16,
-  },
-  section: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
-  },
-  menuIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(2, 132, 199, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  menuText: {
-    flex: 1,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1F2937',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 8,
-  },
-  form: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 16,
-  },
-  inputGroup: {
-    gap: 8,
-  },
-  inputLabel: {
-    fontSize: 14,
-    color: '#6B7280',
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: '#F9FAFB',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 16,
-    color: '#1F2937',
-  },
-  button: {
-    backgroundColor: '#0284C7',
-    borderRadius: 8,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#FFFFFF',
-  },
-  logoutButton: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
-    borderRadius: 12,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  logoutText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#DC2626',
-  },
-});
 
 export default ProfileScreen;
