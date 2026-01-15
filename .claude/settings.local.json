@@ -33,7 +33,8 @@
       "Bash(./gradlew.bat:*)",
       "Bash(gradlew.bat:*)",
       "Bash(yes:*)",
-      "Bash(timeout:*)"
+      "Bash(timeout:*)",
+      "Bash(ipconfig:*)"
     ],
     "deny": [],
     "ask": []

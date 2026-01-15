@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '../lib/store/auth';
+import { HStack } from '@gluestack-ui/themed';
 
 // Interface untuk WatchedFile dari GraphQL
 interface WatchedFile {
@@ -38,6 +39,12 @@ interface XrayImage {
   progress?: number;
   error?: string;
   uploadedPath?: string;
+}
+
+// Interface untuk selectable watched file
+interface SelectableWatchedFile extends WatchedFile {
+  uri: string;
+  selected: boolean;
 }
 
 // GraphQL mutation for creating airwaybill (basic version)
@@ -112,6 +119,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [copied, setCopied] = useState(false);
     const [xrayImages, setXrayImages] = useState<XrayImage[]>([]);
     const [isSaving, setIsSaving] = useState(false);
+    const [showFileSelection, setShowFileSelection] = useState(false);
+    const [selectableFiles, setSelectableFiles] = useState<SelectableWatchedFile[]>([]);
+    const [previewImage, setPreviewImage] = useState<string | null>(null);
     const cameraRef = useRef<CameraView>(null);
     const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
     console.log('OCRCameraModal rendered with visible:', xrayImages);
@@ -124,7 +134,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [createAirwaybillDetail] = useMutation(CREATE_AIRWAYBILL_DETAIL_MUTATION);
 
     // Query watched files - fetch otomatis saat component visible
-    const { data: watchedFilesData, refetch: refetchWatchedFiles } = useQuery(GET_WATCHED_FILES_QUERY, {
+    const { data: watchedFilesData, refetch: refetchWatchedFiles, loading: watchedFilesLoading, error: watchedFilesError } = useQuery(GET_WATCHED_FILES_QUERY, {
         fetchPolicy: 'cache-and-network',
         variables: { first: 20 },
         skip: !visible,
@@ -134,6 +144,12 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [createWatchedFile] = useMutation(CREATE_WATCHED_FILE_MUTATION);
 
     const watchedFiles = watchedFilesData?.watchedFiles?.data || [];
+
+    console.log('Watched files query - visible:', visible);
+    console.log('Watched files query - loading:', watchedFilesLoading);
+    console.log('Watched files query - error:', watchedFilesError);
+    console.log('Watched files query - data:', watchedFilesData);
+    console.log('Watched files fetched:', watchedFiles);
 
     // Polling setiap 5 detik untuk cek watched files baru
     useEffect(() => {
@@ -171,16 +187,54 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     };
 
     const pickXrayImages = async () => {
-        // Langsung tambahkan semua watched files ke xrayImages
-        const newImages: XrayImage[] = watchedFiles
+        // Tampilkan horizontal list dengan watched files yang bisa dipilih
+        console.log('Watched files data:', watchedFiles); // Log watched files data
+
+        const files: SelectableWatchedFile[] = watchedFiles
             .filter(file => !xrayImages.some(img => img.id === file.id))
             .map(file => ({
+                ...file,
+                // Use the link field if available, otherwise construct from API base URL and filepath
+                uri: file.link || `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
+                selected: false,
+            }));
+        setSelectableFiles(files);
+        setShowFileSelection(true);
+    };
+
+    const toggleFileSelection = (id: string) => {
+        setSelectableFiles(prev =>
+            prev.map(file =>
+                file.id === id ? { ...file, selected: !file.selected } : file
+            )
+        );
+    };
+
+    const openImagePreview = (uri: string) => {
+        setPreviewImage(uri);
+    };
+
+    const closeImagePreview = () => {
+        setPreviewImage(null);
+    };
+
+    const confirmFileSelection = () => {
+        const selectedImages: XrayImage[] = selectableFiles
+            .filter(file => file.selected)
+            .map(file => ({
                 id: file.id,
-                uri: `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
+                uri: file.uri,
                 status: 'success' as const,
                 uploadedPath: file.filepath,
             }));
-        setXrayImages(prev => [...prev, ...newImages]);
+        setXrayImages(prev => [...prev, ...selectedImages]);
+        setShowFileSelection(false);
+        setSelectableFiles([]);
+    };
+
+    const cancelFileSelection = () => {
+        setShowFileSelection(false);
+        setSelectableFiles([]);
     };
 
     const removeXrayImage = (id: string) => {
@@ -233,7 +287,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         }
     };
 
-    
+
     const takePicture = async () => {
         if (!cameraRef.current) {
             Alert.alert('Camera Error', 'Camera is not ready. Please try again.');
@@ -297,7 +351,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             ]);
         }
     };
-    
+
 
     const processOCR = async (imageUri: string) => {
     setIsProcessing(true);
@@ -326,14 +380,14 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             })() ??
             joined.match(/\b\d{8}\b/)?.[0] ??
             null;
-        let hawb = 
-            
+        let hawb =
+
             // Fallback: Cari pola EHAN / KGL yang diikuti angka
             joined.match(/\b(EHAN|KGL|FHAN)[A-Z0-9]+\b/)?.[0] ??
-            
+
             null;
 
-        if (awb && hawb) {    
+        if (awb && hawb) {
             setExtractedText(awb ?? '');
             setExtractedHawb(hawb ?? '');
             setIsProcessing(false);
@@ -341,7 +395,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         } else {
             setExtractedText('');
             setExtractedHawb('');
-            
+
             setIsProcessing(true);
             setMessageLoading("Extracting via AI service...");
 
@@ -361,7 +415,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 setIsProcessing(false);
                 setMessageLoading('');
               });
-            
+
         }
 
         console.log('📦 AWB:', awb);
@@ -369,7 +423,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         console.error(error);
         setIsProcessing(false);
         Alert.alert('OCR Error', 'Failed to extract text');
-    } 
+    }
 };
 
 
@@ -640,12 +694,12 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             </TouchableOpacity>
                         </View>
 
-                        <KeyboardAvoidingView 
+                        <KeyboardAvoidingView
                             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
                             style={{ flex: 1 }}
                         >
-                            <ScrollView 
-                                style={styles.resultContent} 
+                            <ScrollView
+                                style={styles.resultContent}
                                 contentContainerStyle={{ flexGrow: 1, paddingBottom: 100 }}
                                 showsVerticalScrollIndicator={false}
                                 keyboardShouldPersistTaps="handled"
@@ -710,7 +764,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                              <Text style={styles.addXrayText}>Add X-ray Images</Text>
                                         </View>
                                     </TouchableOpacity>
-                                    
+
                                     {/* Image Previews (Horizontal) */}
                                     {xrayImages.length > 0 && (
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.xrayList}>
@@ -740,8 +794,8 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                 <TouchableOpacity style={styles.btnSecondary} onPress={retakePicture}>
                                     <Text style={styles.btnSecondaryText}>Retake</Text>
                                 </TouchableOpacity>
-                                <TouchableOpacity 
-                                    style={[styles.btnPrimary, (isSaving || isProcessing) && styles.btnDisabled]} 
+                                <TouchableOpacity
+                                    style={[styles.btnPrimary, (isSaving || isProcessing) && styles.btnDisabled]}
                                     onPress={handleDone}
                                     disabled={isSaving || isProcessing}
                                 >
@@ -764,6 +818,95 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             </View>
                         )}
                     </SafeAreaView>
+                )}
+
+                {/* File Selection Modal - With Preview */}
+                {showFileSelection && (
+                    <View style={styles.fileSelectionOverlay}>
+                        <SafeAreaView style={styles.fileSelectionModal} edges={['left', 'right', 'top', 'bottom']}>
+                            <View style={styles.fileSelectionHeader}>
+                                <Text style={styles.fileSelectionTitle}>Select X-ray Images</Text>
+                                <TouchableOpacity onPress={cancelFileSelection} style={styles.fileSelectionCloseBtn}>
+                                    <X stroke="#FFFFFF" width={24} height={24} />
+                                </TouchableOpacity>
+                            </View>
+
+                            {selectableFiles.length === 0 ? (
+                                <View style={styles.emptyState}>
+                                    <Text style={styles.emptyStateText}>No new X-ray images available</Text>
+                                </View>
+                            ) : (
+                                <>
+                                    {/* Preview Section */}
+                                    <View style={styles.fileSelectionPreviewSection}>
+                                        {previewImage ? (
+                                            <View style={styles.previewContainer}>
+                                                <Image source={{ uri: previewImage }} style={styles.previewImageLarge} resizeMode="contain" />
+                                                <TouchableOpacity
+                                                    style={styles.previewCloseBtn}
+                                                    onPress={() => setPreviewImage(null)}
+                                                >
+                                                    <X stroke="white" width={20} height={20} />
+                                                </TouchableOpacity>
+                                            </View>
+                                        ) : (
+                                            <View style={styles.previewPlaceholder}>
+                                                <Text style={styles.previewPlaceholderText}>Tap an image to preview</Text>
+                                            </View>
+                                        )}
+                                    </View>
+
+                                    {/* Thumbnails Section */}
+                                    <View style={styles.fileSelectionThumbnailsSection}>
+                                        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                            {selectableFiles.map((file, index) => (
+                                                <TouchableOpacity
+                                                    key={file.id}
+                                                    style={[
+                                                        styles.fileSelectionThumbnail,
+                                                        previewImage === file.uri && styles.fileSelectionThumbnailActive
+                                                    ]}
+                                                    onPress={() => openImagePreview(file.uri)}
+                                                    activeOpacity={0.9}
+                                                >
+                                                    <Image source={{ uri: file.uri }} style={styles.fileSelectionThumbImage} />
+                                                    <TouchableOpacity
+                                                        style={styles.fileSelectionCheckboxBtn}
+                                                        onPress={() => toggleFileSelection(file.id)}
+                                                    >
+                                                        <View style={[
+                                                            styles.fileSelectionCheckbox,
+                                                            file.selected && styles.fileSelectionCheckboxChecked
+                                                        ]}>
+                                                            {file.selected && (
+                                                                <Check stroke="white" width={12} height={12} />
+                                                            )}
+                                                        </View>
+                                                    </TouchableOpacity>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </ScrollView>
+                                    </View>
+
+                                    <View style={styles.fileSelectionFooter}>
+                                        <Text style={styles.fileSelectionCount}>
+                                            {selectableFiles.filter(f => f.selected).length} selected
+                                        </Text>
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.fileSelectionConfirmBtn,
+                                                selectableFiles.filter(f => f.selected).length === 0 && styles.fileSelectionConfirmBtnDisabled
+                                            ]}
+                                            onPress={confirmFileSelection}
+                                            disabled={selectableFiles.filter(f => f.selected).length === 0}
+                                        >
+                                            <Text style={styles.fileSelectionConfirmText}>Add Selected</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+                        </SafeAreaView>
+                    </View>
                 )}
             </View>
         </View>
@@ -909,7 +1052,7 @@ const styles = StyleSheet.create({
         width: 50,
         height: 50,
     },
-    
+
     // Result / Preview Styles
     resultContainer: {
         flex: 1,
@@ -1031,7 +1174,7 @@ const styles = StyleSheet.create({
     xrayList: {
         marginTop: 12,
         paddingVertical: 5,
-        
+
     },
     xrayThumbnail: {
         width: 64,
@@ -1072,7 +1215,7 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         borderWidth: 1.5,
         borderColor: 'white',
-        
+
     },
     uploadProgressOverlay: {
         position: 'absolute',
@@ -1082,7 +1225,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'center',
     },
-    
+
     // Footer
     resultFooter: {
         padding: 24,
@@ -1165,6 +1308,164 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#6B7280',
         fontStyle: 'italic',
+    },
+    // File Selection Modal Styles - With Preview
+    fileSelectionOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.95)',
+        zIndex: 100,
+        justifyContent: 'center',
+        width: '100%',
+        height: '100%',
+    },
+    fileSelectionModal: {
+        flex: 1,
+        backgroundColor: '#1F2937',
+        margin: 20,
+        borderRadius: 20,
+        overflow: 'hidden',
+    },
+    fileSelectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 16,
+        borderBottomWidth: 1,
+        borderBottomColor: '#374151',
+        backgroundColor: '#111827',
+    },
+    fileSelectionTitle: {
+        fontSize: 18,
+        fontWeight: '700',
+        color: 'white',
+    },
+    fileSelectionCloseBtn: {
+        padding: 4,
+    },
+    fileSelectionPreviewSection: {
+        flex: 1,
+        backgroundColor: '#111827',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    previewContainer: {
+        flex: 1,
+        width: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+        position: 'relative',
+    },
+    previewImageLarge: {
+        width: '100%',
+        height: '100%',
+        flex: 1,
+        resizeMode: 'contain',
+    },
+    previewCloseBtn: {
+        position: 'absolute',
+        top: 16,
+        right: 16,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        borderRadius: 20,
+        width: 36,
+        height: 36,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    previewPlaceholder: {
+        width: '100%',
+        height: '100%',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    previewPlaceholderText: {
+        fontSize: 16,
+        color: '#6B7280',
+    },
+    fileSelectionThumbnailsSection: {
+        height: 120,
+        backgroundColor: '#1F2937',
+        paddingHorizontal: 12,
+        paddingVertical: 12,
+    },
+    emptyState: {
+        paddingVertical: 60,
+        alignItems: 'center',
+    },
+    emptyStateText: {
+        fontSize: 14,
+        color: '#9CA3AF',
+    },
+    fileSelectionThumbnail: {
+        width: 90,
+        height: 90,
+        marginRight: 10,
+        position: 'relative',
+        borderRadius: 10,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    fileSelectionThumbnailActive: {
+        borderColor: '#2563EB',
+    },
+    fileSelectionThumbImage: {
+        width: 90,
+        height: 90,
+        borderRadius: 10,
+        backgroundColor: '#374151',
+        resizeMode: 'cover',
+    },
+    fileSelectionCheckboxBtn: {
+        position: 'absolute',
+        top: 4,
+        left: 4,
+    },
+    fileSelectionCheckbox: {
+        width: 22,
+        height: 22,
+        borderRadius: 11,
+        borderWidth: 2,
+        borderColor: 'white',
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    fileSelectionCheckboxChecked: {
+        backgroundColor: '#2563EB',
+        borderColor: '#2563EB',
+    },
+    fileSelectionFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderTopWidth: 1,
+        borderTopColor: '#374151',
+        backgroundColor: '#1F2937',
+    },
+    fileSelectionCount: {
+        fontSize: 14,
+        color: '#D1D5DB',
+    },
+    fileSelectionConfirmBtn: {
+        backgroundColor: '#2563EB',
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 99,
+    },
+    fileSelectionConfirmBtnDisabled: {
+        backgroundColor: '#4B5563',
+    },
+    fileSelectionConfirmText: {
+        color: 'white',
+        fontSize: 14,
+        fontWeight: '600',
     },
 });
 
