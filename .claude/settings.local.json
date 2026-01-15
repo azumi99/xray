@@ -34,7 +34,11 @@
       "Bash(gradlew.bat:*)",
       "Bash(yes:*)",
       "Bash(timeout:*)",
-      "Bash(ipconfig:*)"
+      "Bash(ipconfig:*)",
+      "Bash(netsh:*)",
+      "Bash(npx expo prebuild:*)",
+      "Bash(powershell:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
