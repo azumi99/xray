@@ -20,7 +20,7 @@ export default function DetailLayout() {
       <Stack.Screen
         name="[id]"
         options={{
-          headerShown: true,
+          headerShown: false,
           headerTitle: 'AWB Details',
           headerBackTitleVisible: false,
           headerStyle: {

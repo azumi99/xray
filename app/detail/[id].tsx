@@ -2,10 +2,11 @@ import { useAuth } from '@/lib/store/auth';
 import { useThemeStore } from '@/lib/store/themeStore';
 import { gql, useQuery } from '@apollo/client';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useLocalSearchParams } from 'expo-router';
-import { Camera, CheckCircle, Copy, Maximize2, Package, Plane, Scan, X } from 'lucide-react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Camera, CheckCircle, Copy, Maximize2, Package, Plane, Scan, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // GraphQL query for AWB detail
 const GET_AWB_DETAIL = gql`
@@ -103,11 +104,41 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 1001,
   },
+  scrollView: {
+    flex: 1,
+  },
+  emptyContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  emptyIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  emptyTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  emptySubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    textAlign: 'center',
+  },
 });
 
 const DetailScreen = () => {
   const params = useLocalSearchParams();
   const { id } = params;
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -310,6 +341,42 @@ const DetailScreen = () => {
   // Render main content
   return (
     <View style={[styles.container, { backgroundColor: isDark ? '#111827' : '#FAFAFA' }]}>
+      <View style={{
+        backgroundColor: isDark ? '#1F2937' : '#FFFFFF',
+        paddingTop: insets.top,
+        borderBottomWidth: 0.5,
+        borderBottomColor: isDark ? '#374151' : '#E5E7EB',
+        zIndex: 10,
+      }}>
+        <View style={{
+          height: 56,
+          flexDirection: 'row',
+          alignItems: 'center',
+          paddingHorizontal: 16,
+          gap: 16
+        }}>
+          <TouchableOpacity 
+            onPress={() => router.back()}
+            style={{ 
+              width: 40, 
+              height: 40, 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              marginLeft: -8 
+            }}
+          >
+            <ArrowLeft size={24} color={isDark ? '#60A5FA' : '#0284C7'} />
+          </TouchableOpacity>
+          <Text style={{ 
+            fontSize: 16, 
+            fontWeight: '600', 
+            color: isDark ? '#F9FAFB' : '#1F2937' 
+          }}>
+            AWB Details
+          </Text>
+        </View>
+      </View>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingBottom: 40 }}
@@ -590,7 +657,7 @@ const DetailScreen = () => {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 12 }}
             >
-              {xrayPhotos.map((photo, index) => (
+              {xrayPhotos.map((photo: string, index: number) => (
                 <TouchableOpacity
                   key={index}
                   onPress={() => setSelectedPhoto(photo)}
