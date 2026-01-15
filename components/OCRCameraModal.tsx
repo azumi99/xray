@@ -21,7 +21,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '../lib/store/auth';
-import { HStack } from '@gluestack-ui/themed';
+import { useThemeStore } from '../lib/store/themeStore';
 
 // Interface untuk WatchedFile dari GraphQL
 interface WatchedFile {
@@ -128,6 +128,8 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
     // Get session data for authorization
     const { session } = useAuth();
+    const { theme } = useThemeStore();
+    const isDark = theme === 'dark';
 
     // GraphQL mutation hooks
     const [createAirwaybill] = useMutation(CREATE_AIRWAYBILL_MUTATION);
@@ -653,18 +655,18 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             <View style={styles.modalContent}>
                 {/* Permission not granted yet */}
                 {!permission && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#111827' : COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
                         <ActivityIndicator size="large" color={COLORS.primary} />
                     </SafeAreaView>
                 )}
 
                 {/* Request permission */}
                 {permission && !permission.granted && (
-                    <SafeAreaView style={[styles.container, { backgroundColor: COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
+                    <SafeAreaView style={[styles.container, { backgroundColor: isDark ? '#111827' : COLORS.background }]} edges={['left', 'right', 'top', 'bottom']}>
                         <View style={styles.permissionContainer}>
-                            <CameraIcon width={64} height={64} color={COLORS.gray} />
-                            <Text style={styles.permissionTitle}>Camera Permission Required</Text>
-                            <Text style={styles.permissionText}>
+                            <CameraIcon width={64} height={64} color={isDark ? '#9CA3AF' : COLORS.gray} />
+                            <Text style={[styles.permissionTitle, isDark && { color: '#F9FAFB' }]}>Camera Permission Required</Text>
+                            <Text style={[styles.permissionText, isDark && { color: '#9CA3AF' }]}>
                                 We need access to your camera to scan and extract text
                             </Text>
                             <TouchableOpacity onPress={requestPermission} style={styles.permissionButton}>
@@ -726,11 +728,11 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 {/* Preview with OCR Results */}
                 {/* Preview with OCR Results */}
                 {capturedPhoto && (
-                    <SafeAreaView style={styles.resultContainer} edges={['left', 'right', 'top', 'bottom']}>
+                    <SafeAreaView style={[styles.resultContainer, isDark && { backgroundColor: '#111827' }]} edges={['left', 'right', 'top', 'bottom']}>
                         <View style={styles.resultHeader}>
-                            <Text style={styles.resultTitle}>OCR Result</Text>
+                            <Text style={[styles.resultTitle, isDark && { color: '#F9FAFB' }]}>OCR Result</Text>
                             <TouchableOpacity onPress={handleClose} style={styles.closeButton}>
-                                <X stroke={COLORS.text} width={24} height={24} />
+                                <X stroke={isDark ? '#F9FAFB' : COLORS.text} width={24} height={24} />
                             </TouchableOpacity>
                         </View>
 
@@ -745,7 +747,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                 keyboardShouldPersistTaps="handled"
                             >
                                 {/* Scanned Image Card */}
-                                <View style={styles.resultImageCard}>
+                                <View style={[styles.resultImageCard, isDark && { backgroundColor: '#1F2937' }]}>
                                     <Image source={{ uri: capturedPhoto }} style={styles.resultImage} />
                                     <View style={styles.scannedBadge}>
                                         <Maximize2 stroke="#FFFFFF" width={12} height={12} />
@@ -755,10 +757,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* AWB Number Input */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={styles.fieldLabel}>AWB Number</Text>
-                                    <View style={styles.inputCard}>
+                                    <Text style={[styles.fieldLabel, isDark && { color: '#9CA3AF' }]}>AWB Number</Text>
+                                    <View style={[styles.inputCard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
                                         <TextInput
-                                            style={styles.inputField}
+                                            style={[styles.inputField, isDark && { color: '#F9FAFB' }]}
                                             value={extractedText}
                                             onChangeText={setExtractedText}
                                             placeholder="000 0000 0000"
@@ -769,7 +771,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                             {copied ? (
                                                 <Check stroke={COLORS.success} width={20} height={20} />
                                             ) : (
-                                                <Copy stroke="#3B82F6" width={20} height={20} />
+                                                <Copy stroke={isDark ? '#60A5FA' : "#3B82F6"} width={20} height={20} />
                                             )}
                                         </TouchableOpacity>
                                     </View>
@@ -777,10 +779,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* HAWB Number Input */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={styles.fieldLabel}>HAWB Number</Text>
-                                    <View style={styles.inputCard}>
+                                    <Text style={[styles.fieldLabel, isDark && { color: '#9CA3AF' }]}>HAWB Number</Text>
+                                    <View style={[styles.inputCard, isDark && { backgroundColor: '#1F2937', borderColor: '#374151' }]}>
                                         <TextInput
-                                            style={styles.inputField}
+                                            style={[styles.inputField, isDark && { color: '#F9FAFB' }]}
                                             value={extractedHawb}
                                             onChangeText={setExtractedHawb}
                                             placeholder="Enter HAWB"
@@ -789,7 +791,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                         />
                                         {extractedHawb ? (
                                             <TouchableOpacity onPress={() => { Clipboard.setStringAsync(extractedHawb); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={styles.copyAction}>
-                                                 <Copy stroke="#3B82F6" width={20} height={20} />
+                                                 <Copy stroke={isDark ? '#60A5FA' : "#3B82F6"} width={20} height={20} />
                                             </TouchableOpacity>
                                         ) : null}
                                     </View>
@@ -797,11 +799,20 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                                 {/* X-ray Image Upload */}
                                 <View style={styles.fieldGroup}>
-                                    <Text style={styles.fieldLabel}>X-ray Image</Text>
-                                    <TouchableOpacity onPress={pickXrayImages} style={styles.addXrayButton}>
+                                    <Text style={[styles.fieldLabel, isDark && { color: '#9CA3AF' }]}>X-ray Image</Text>
+                                    <TouchableOpacity 
+                                        onPress={pickXrayImages} 
+                                        style={[
+                                            styles.addXrayButton,
+                                            isDark && { 
+                                                backgroundColor: 'rgba(59, 130, 246, 0.1)', 
+                                                borderColor: 'rgba(59, 130, 246, 0.3)' 
+                                            }
+                                        ]}
+                                    >
                                         <View style={styles.addXrayContent}>
-                                             <Plus stroke="#3B82F6" width={20} height={20} />
-                                             <Text style={styles.addXrayText}>Add X-ray Images</Text>
+                                             <Plus stroke={isDark ? '#60A5FA' : "#3B82F6"} width={20} height={20} />
+                                             <Text style={[styles.addXrayText, isDark && { color: '#60A5FA' }]}>Add X-ray Images</Text>
                                         </View>
                                     </TouchableOpacity>
 
@@ -830,9 +841,9 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             </ScrollView>
 
                             {/* Footer Actions */}
-                            <View style={styles.resultFooter}>
-                                <TouchableOpacity style={styles.btnSecondary} onPress={retakePicture}>
-                                    <Text style={styles.btnSecondaryText}>Retake</Text>
+                            <View style={[styles.resultFooter, isDark && { backgroundColor: '#111827', borderColor: '#374151' }]}>
+                                <TouchableOpacity style={[styles.btnSecondary, isDark && { backgroundColor: '#374151' }]} onPress={retakePicture}>
+                                    <Text style={[styles.btnSecondaryText, isDark && { color: '#F9FAFB' }]}>Retake</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     style={[styles.btnPrimary, (isSaving || isProcessing) && styles.btnDisabled]}
@@ -850,10 +861,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
                         {/* Loading Overlay */}
                         {isProcessing && (
-                            <View style={styles.loadingOverlay}>
-                                <View style={styles.loadingCard}>
-                                    <ActivityIndicator size="large" color="#3B82F6" />
-                                    <Text style={styles.loadingText}>{messageLoading || 'Processing...'}</Text>
+                            <View style={[styles.loadingOverlay, isDark && { backgroundColor: 'rgba(0, 0, 0, 0.8)' }]}>
+                                <View style={[styles.loadingCard, isDark && { backgroundColor: '#1F2937' }]}>
+                                    <ActivityIndicator size="large" color={isDark ? '#60A5FA' : "#3B82F6"} />
+                                    <Text style={[styles.loadingText, isDark && { color: '#F9FAFB' }]}>{messageLoading || 'Processing...'}</Text>
                                 </View>
                             </View>
                         )}
@@ -863,12 +874,12 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 {/* File Selection Modal - With Preview */}
                 {showFileSelection && (
                     <View style={styles.fileSelectionOverlay}>
-                        <SafeAreaView style={styles.fileSelectionModal} edges={['left', 'right', 'top', 'bottom']}>
-                            <View style={styles.fileSelectionHeader}>
+                        <SafeAreaView style={[styles.fileSelectionModal, !isDark && { backgroundColor: '#FFFFFF' }]} edges={['left', 'right', 'top', 'bottom']}>
+                            <View style={[styles.fileSelectionHeader, !isDark && { backgroundColor: '#F9FAFB', borderBottomColor: '#E5E7EB' }]}>
                                 <View>
-                                    <Text style={styles.fileSelectionTitle}>Select X-ray Images</Text>
+                                    <Text style={[styles.fileSelectionTitle, !isDark && { color: '#111827' }]}>Select X-ray Images</Text>
                                     <View style={styles.fileSelectionSubtitle}>
-                                        <Text style={styles.fileSelectionCountText}>
+                                        <Text style={[styles.fileSelectionCountText, !isDark && { color: '#6B7280' }]}>
                                             {selectableFiles.length} images available
                                         </Text>
                                         {watchedFilesLoading && (
@@ -883,7 +894,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                         </View>
                                     )}
                                     <TouchableOpacity onPress={cancelFileSelection} style={styles.fileSelectionCloseBtn}>
-                                        <X stroke="#FFFFFF" width={24} height={24} />
+                                        <X stroke={isDark ? "#FFFFFF" : "#111827"} width={24} height={24} />
                                     </TouchableOpacity>
                                 </View>
                             </View>
@@ -895,7 +906,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             ) : (
                                 <>
                                     {/* Preview Section */}
-                                    <View style={styles.fileSelectionPreviewSection}>
+                                    <View style={[styles.fileSelectionPreviewSection, !isDark && { backgroundColor: '#F3F4F6' }]}>
                                         {previewImage ? (
                                             <View style={styles.previewContainer}>
                                                 <Image source={{ uri: previewImage }} style={styles.previewImageLarge} resizeMode="contain" />
@@ -908,13 +919,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                             </View>
                                         ) : (
                                             <View style={styles.previewPlaceholder}>
-                                                <Text style={styles.previewPlaceholderText}>Tap an image to preview</Text>
+                                                <Text style={[styles.previewPlaceholderText, !isDark && { color: '#9CA3AF' }]}>Tap an image to preview</Text>
                                             </View>
                                         )}
                                     </View>
 
                                     {/* Thumbnails Section */}
-                                    <View style={styles.fileSelectionThumbnailsSection}>
+                                    <View style={[styles.fileSelectionThumbnailsSection, !isDark && { backgroundColor: '#FFFFFF' }]}>
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                                             {selectableFiles.map((file, index) => {
                                                 const isNew = newFilesInSelection.includes(file.id);
@@ -923,12 +934,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                                         key={file.id}
                                                         style={[
                                                             styles.fileSelectionThumbnail,
-                                                            previewImage === file.uri && styles.fileSelectionThumbnailActive
+                                                            previewImage === file.uri && styles.fileSelectionThumbnailActive,
+                                                            !isDark && { borderColor: previewImage === file.uri ? '#2563EB' : 'transparent' }
                                                         ]}
                                                         onPress={() => openImagePreview(file.uri)}
                                                         activeOpacity={0.9}
                                                     >
-                                                        <Image source={{ uri: file.uri }} style={styles.fileSelectionThumbImage} />
+                                                        <Image source={{ uri: file.uri }} style={[styles.fileSelectionThumbImage, !isDark && { backgroundColor: '#E5E7EB' }]} />
                                                         {isNew && (
                                                             <View style={styles.fileSelectionNewBadge}>
                                                                 <Text style={styles.fileSelectionNewBadgeText}>NEW</Text>
@@ -940,6 +952,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                                         >
                                                             <View style={[
                                                                 styles.fileSelectionCheckbox,
+                                                                !isDark && { borderColor: 'white', backgroundColor: 'rgba(0,0,0,0.3)' },
                                                                 file.selected && styles.fileSelectionCheckboxChecked
                                                             ]}>
                                                                 {file.selected && (
@@ -953,8 +966,8 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                         </ScrollView>
                                     </View>
 
-                                    <View style={styles.fileSelectionFooter}>
-                                        <Text style={styles.fileSelectionCount}>
+                                    <View style={[styles.fileSelectionFooter, !isDark && { backgroundColor: '#FFFFFF', borderTopColor: '#E5E7EB' }]}>
+                                        <Text style={[styles.fileSelectionCount, !isDark && { color: '#4B5563' }]}>
                                             {selectableFiles.filter(f => f.selected).length} selected
                                         </Text>
                                         <TouchableOpacity
