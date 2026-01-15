@@ -7,10 +7,11 @@ config.maxWorkers = 1; // Reduce CPU load on Windows
 config.resetCache = true; // Always reset cache
 config.watchFolders = [__dirname]; // Limit watched folders
 
-// Increase timeouts for Windows
+// Configure Metro to listen on all interfaces and use port 8081
 config.server = {
   ...config.server,
-  port: 8091,
+  port: 8081,
+  host: '0.0.0.0', // Listen on all interfaces
   enhanceMiddleware: (middleware) => {
     return (req, res, next) => {
       // Increase timeout for Windows
