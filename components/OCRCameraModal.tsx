@@ -145,6 +145,45 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
     const watchedFiles = watchedFilesData?.watchedFiles?.data || [];
 
+    // State untuk tracking file baru di selection modal
+    const [previousFilesRef, setPreviousFilesRef] = useState<string[]>([]);
+    const [newFilesInSelection, setNewFilesInSelection] = useState<string[]>([]);
+
+    // Deteksi file baru saat watchedFiles berubah (untuk file selection)
+    useEffect(() => {
+        if (showFileSelection) {
+            const currentIds = watchedFiles.map((f: WatchedFile) => f.id);
+            const newFiles = currentIds.filter((id: string) => !previousFilesRef.includes(id));
+            if (newFiles.length > 0) {
+                setNewFilesInSelection(newFiles);
+                // Update selectableFiles dengan file baru di depan (paling kiri)
+                setSelectableFiles(prev => {
+                    const existingIds = prev.map(f => f.id);
+                    const newSelectableFiles = watchedFiles
+                        .filter(f => !existingIds.includes(f.id) && !xrayImages.some(img => img.id === f.id))
+                        // Urutkan dari yang terbaru
+                        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+                        .map(file => ({
+                            ...file,
+                            uri: file.link || `${process.env.EXPO_PUBLIC_API_BASE_URL}/storage/${file.filepath}`,
+                            selected: false,
+                        }));
+                    // File baru di depan, file lama di belakang
+                    return [...newSelectableFiles, ...prev];
+                });
+            }
+            setPreviousFilesRef(currentIds);
+        }
+    }, [watchedFiles, showFileSelection, xrayImages]);
+
+    // Reset tracking saat file selection dibuka/tutup
+    useEffect(() => {
+        if (showFileSelection) {
+            setPreviousFilesRef(watchedFiles.map((f: WatchedFile) => f.id));
+            setNewFilesInSelection([]);
+        }
+    }, [showFileSelection, watchedFiles]);
+
     console.log('Watched files query - visible:', visible);
     console.log('Watched files query - loading:', watchedFilesLoading);
     console.log('Watched files query - error:', watchedFilesError);
@@ -230,6 +269,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         setXrayImages(prev => [...prev, ...selectedImages]);
         setShowFileSelection(false);
         setSelectableFiles([]);
+        setNewFilesInSelection([]);
     };
 
     const cancelFileSelection = () => {
@@ -825,10 +865,27 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                     <View style={styles.fileSelectionOverlay}>
                         <SafeAreaView style={styles.fileSelectionModal} edges={['left', 'right', 'top', 'bottom']}>
                             <View style={styles.fileSelectionHeader}>
-                                <Text style={styles.fileSelectionTitle}>Select X-ray Images</Text>
-                                <TouchableOpacity onPress={cancelFileSelection} style={styles.fileSelectionCloseBtn}>
-                                    <X stroke="#FFFFFF" width={24} height={24} />
-                                </TouchableOpacity>
+                                <View>
+                                    <Text style={styles.fileSelectionTitle}>Select X-ray Images</Text>
+                                    <View style={styles.fileSelectionSubtitle}>
+                                        <Text style={styles.fileSelectionCountText}>
+                                            {selectableFiles.length} images available
+                                        </Text>
+                                        {watchedFilesLoading && (
+                                            <ActivityIndicator size="small" color="#3B82F6" style={{ marginLeft: 8 }} />
+                                        )}
+                                    </View>
+                                </View>
+                                <View style={styles.fileSelectionHeaderRight}>
+                                    {newFilesInSelection.length > 0 && (
+                                        <View style={styles.newFilesBadge}>
+                                            <Text style={styles.newFilesBadgeText}>+{newFilesInSelection.length} NEW</Text>
+                                        </View>
+                                    )}
+                                    <TouchableOpacity onPress={cancelFileSelection} style={styles.fileSelectionCloseBtn}>
+                                        <X stroke="#FFFFFF" width={24} height={24} />
+                                    </TouchableOpacity>
+                                </View>
                             </View>
 
                             {selectableFiles.length === 0 ? (
@@ -859,32 +916,40 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                                     {/* Thumbnails Section */}
                                     <View style={styles.fileSelectionThumbnailsSection}>
                                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                                            {selectableFiles.map((file, index) => (
-                                                <TouchableOpacity
-                                                    key={file.id}
-                                                    style={[
-                                                        styles.fileSelectionThumbnail,
-                                                        previewImage === file.uri && styles.fileSelectionThumbnailActive
-                                                    ]}
-                                                    onPress={() => openImagePreview(file.uri)}
-                                                    activeOpacity={0.9}
-                                                >
-                                                    <Image source={{ uri: file.uri }} style={styles.fileSelectionThumbImage} />
+                                            {selectableFiles.map((file, index) => {
+                                                const isNew = newFilesInSelection.includes(file.id);
+                                                return (
                                                     <TouchableOpacity
-                                                        style={styles.fileSelectionCheckboxBtn}
-                                                        onPress={() => toggleFileSelection(file.id)}
+                                                        key={file.id}
+                                                        style={[
+                                                            styles.fileSelectionThumbnail,
+                                                            previewImage === file.uri && styles.fileSelectionThumbnailActive
+                                                        ]}
+                                                        onPress={() => openImagePreview(file.uri)}
+                                                        activeOpacity={0.9}
                                                     >
-                                                        <View style={[
-                                                            styles.fileSelectionCheckbox,
-                                                            file.selected && styles.fileSelectionCheckboxChecked
-                                                        ]}>
-                                                            {file.selected && (
-                                                                <Check stroke="white" width={12} height={12} />
-                                                            )}
-                                                        </View>
+                                                        <Image source={{ uri: file.uri }} style={styles.fileSelectionThumbImage} />
+                                                        {isNew && (
+                                                            <View style={styles.fileSelectionNewBadge}>
+                                                                <Text style={styles.fileSelectionNewBadgeText}>NEW</Text>
+                                                            </View>
+                                                        )}
+                                                        <TouchableOpacity
+                                                            style={styles.fileSelectionCheckboxBtn}
+                                                            onPress={() => toggleFileSelection(file.id)}
+                                                        >
+                                                            <View style={[
+                                                                styles.fileSelectionCheckbox,
+                                                                file.selected && styles.fileSelectionCheckboxChecked
+                                                            ]}>
+                                                                {file.selected && (
+                                                                    <Check stroke="white" width={12} height={12} />
+                                                                )}
+                                                            </View>
+                                                        </TouchableOpacity>
                                                     </TouchableOpacity>
-                                                </TouchableOpacity>
-                                            ))}
+                                                );
+                                            })}
                                         </ScrollView>
                                     </View>
 
@@ -1344,6 +1409,31 @@ const styles = StyleSheet.create({
         fontWeight: '700',
         color: 'white',
     },
+    fileSelectionSubtitle: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 4,
+    },
+    fileSelectionCountText: {
+        fontSize: 13,
+        color: '#9CA3AF',
+    },
+    fileSelectionHeaderRight: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+    },
+    newFilesBadge: {
+        backgroundColor: '#22C55E',
+        paddingHorizontal: 10,
+        paddingVertical: 4,
+        borderRadius: 12,
+    },
+    newFilesBadgeText: {
+        color: 'white',
+        fontSize: 11,
+        fontWeight: '700',
+    },
     fileSelectionCloseBtn: {
         padding: 4,
     },
@@ -1412,6 +1502,20 @@ const styles = StyleSheet.create({
     },
     fileSelectionThumbnailActive: {
         borderColor: '#2563EB',
+    },
+    fileSelectionNewBadge: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        backgroundColor: '#22C55E',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 6,
+    },
+    fileSelectionNewBadgeText: {
+        color: 'white',
+        fontSize: 9,
+        fontWeight: '700',
     },
     fileSelectionThumbImage: {
         width: 90,
