@@ -3,7 +3,7 @@ import { useThemeStore } from '@/lib/store/themeStore';
 import { gql, useQuery } from '@apollo/client';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
-import { Camera, CheckCircle, Copy, Maximize2, Package, Plane, Plus, Scan, X } from 'lucide-react-native';
+import { Camera, CheckCircle, Copy, Maximize2, Package, Plane, Scan, X } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Dimensions, Image, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -617,7 +617,7 @@ const DetailScreen = () => {
                 </TouchableOpacity>
               ))}
               {/* Add More Button */}
-              <TouchableOpacity style={{
+              {/* <TouchableOpacity style={{
                   width: 140,
                   height: 140,
                   borderRadius: 16,
@@ -630,7 +630,7 @@ const DetailScreen = () => {
               }}>
                  <Plus size={24} color="#9ca3af" />
                  <Text style={{ marginTop: 8, fontSize: 12, fontWeight: '500', color: '#6b7280' }}>Add Scan</Text>
-              </TouchableOpacity>
+              </TouchableOpacity> */}
             </ScrollView>
           )}
         </View>
