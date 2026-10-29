@@ -1,0 +1,95 @@
+diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/checksums/checksums.lock b/node_modules/expo-camera/android/.gradle/9.2.0/checksums/checksums.lock
+new file mode 100644
+index 0000000..9a42eeb
+Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/checksums/checksums.lock differ
+diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/fileChanges/last-build.bin b/node_modules/expo-camera/android/.gradle/9.2.0/fileChanges/last-build.bin
+new file mode 100644
+index 0000000..f76dd23
+Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileChanges/last-build.bin differ
+diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin
+new file mode 100644
+index 0000000..7c6986b
+Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin differ
+diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock
+new file mode 100644
+index 0000000..2076593
+Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock differ
+diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/gc.properties b/node_modules/expo-camera/android/.gradle/9.2.0/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-camera/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock b/node_modules/expo-camera/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock
+new file mode 100644
+index 0000000..35d1fc5
+Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/buildOutputCleanup/buildOutputCleanup.lock differ
+diff --git a/node_modules/expo-camera/android/.gradle/buildOutputCleanup/cache.properties b/node_modules/expo-camera/android/.gradle/buildOutputCleanup/cache.properties
+new file mode 100644
+index 0000000..f128947
+--- /dev/null
++++ b/node_modules/expo-camera/android/.gradle/buildOutputCleanup/cache.properties
+@@ -0,0 +1,2 @@
++#Fri Oct 02 10:10:07 WIB 2026
++gradle.version=9.2.0
+diff --git a/node_modules/expo-camera/android/.gradle/vcs-1/gc.properties b/node_modules/expo-camera/android/.gradle/vcs-1/gc.properties
+new file mode 100644
+index 0000000..e69de29
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt
+index 00a70f6..e98a5cd 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt
+@@ -44,31 +44,34 @@ class BarcodeAnalyzer(formats: List<BarcodeType>, val onComplete: (BarCodeScanne
+           if (barcodes.isEmpty()) {
+             return@addOnSuccessListener
+           }
+-          val barcode = barcodes.first()
+-          val raw = barcode.rawValue ?: barcode.rawBytes?.let { String(it) }
++          // Emit SEMUA barcode yang terdeteksi dalam 1 frame (bukan hanya yang pertama)
++          // supaya label dengan 2 barcode (MAWB + HAWB) bisa terbaca bersamaan.
++          for (barcode in barcodes) {
++            val raw = barcode.rawValue ?: barcode.rawBytes?.let { String(it) }
+ 
+-          val cornerPoints = barcode.cornerPoints?.let { points ->
+-            // Pre-allocate array
+-            IntArray(points.size * 2).apply {
+-              points.forEachIndexed { index, point ->
+-                this[index * 2] = point.x
+-                this[index * 2 + 1] = point.y
+-              }
+-            }.toMutableList()
+-          } ?: mutableListOf()
++            val cornerPoints = barcode.cornerPoints?.let { points ->
++              // Pre-allocate array
++              IntArray(points.size * 2).apply {
++                points.forEachIndexed { index, point ->
++                  this[index * 2] = point.x
++                  this[index * 2 + 1] = point.y
++                }
++              }.toMutableList()
++            } ?: mutableListOf()
+ 
+-          val extra = BarCodeScannerResultSerializer.parseExtraDate(barcode)
+-          onComplete(
+-            BarCodeScannerResult(
+-              barcode.format,
+-              barcode.displayValue,
+-              raw,
+-              extra,
+-              cornerPoints,
+-              effectiveHeight,
+-              effectiveWidth
++            val extra = BarCodeScannerResultSerializer.parseExtraDate(barcode)
++            onComplete(
++              BarCodeScannerResult(
++                barcode.format,
++                barcode.displayValue,
++                raw,
++                extra,
++                cornerPoints,
++                effectiveHeight,
++                effectiveWidth
++              )
+             )
+-          )
++          }
+         }
+         .addOnFailureListener {
+           Log.d("SCANNER", it.cause?.message ?: "Barcode scanning failed")
