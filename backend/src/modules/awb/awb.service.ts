@@ -377,23 +377,27 @@ export class AwbService {
       const wmHawb = host?.hawb || awb.hawb || '';
       const qtyTotal = host?.quantity && host.quantity > 0 ? Math.round(host.quantity) : group.length;
       const collyPos = collyIndex >= 0 ? collyIndex + 1 : group.length;
-      const wmParts = [wmMawb, wmHawb, `${collyPos} of ${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
+      const wmParts = [wmMawb, wmHawb, `${collyPos}OF${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
       const saveImage = async (data: string, label: string) => {
         const raw = data.replace(/^data:image\/\w+;base64,/, '');
         const name = `xray_${awb.id}_${label}_${Date.now()}.jpg`;
         await mkdir(join(process.cwd(), 'uploads'), { recursive: true });
-        // Watermark strip bawah: satu baris label berformat MAWB_HAWB_POS of QTY_TOP/SIDE
-        // (wrap per 48 char agar tidak terpotong; strip tinggi menyesuaikan jumlah baris).
+        // Watermark strip bawah: satu baris label berformat MAWB_HAWB_POSOFQTY_TOP/SIDE.
+        // Wrap dihitung dari LEBAR PIKSEL gambar hasil crop (bukan jumlah char),
+        // supaya label tidak terpotong pada crop objek kecil.
         const meta = await sharp(Buffer.from(raw, 'base64')).metadata();
-        const fontSize = Math.max(10, Math.round((meta.width ?? 640) / 48));
+        const imgW = meta.width ?? 640;
+        const fontSize = Math.min(17, Math.max(6, Math.round(imgW / 56)));
         const lineH = fontSize * 1.4;
-        const lines = [`${wmParts.join('_')}_${label.toUpperCase()}`].flatMap((l) => l.match(/.{1,48}/g) ?? []);
+        const charW = fontSize * 0.62; // monospace bold
+        const maxChars = Math.max(8, Math.floor((imgW - fontSize * 1.5) / charW));
+        const lines = [`${wmParts.join('_')}_${label.toUpperCase()}`].flatMap((l) => l.match(new RegExp(`.{1,${maxChars}}`, 'g')) ?? []);
         const stripH = Math.max(lineH * 1.4, lines.length * lineH + fontSize * 0.5);
         const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const textEls = lines
           .map((line, i) => `<text x="${fontSize}" y="${lineH * (i + 0.78)}" font-family="monospace" font-weight="bold" font-size="${fontSize}" fill="#FFFFFF">${esc(line)}</text>`)
           .join('');
-        const svg = `<svg width="${meta.width ?? 640}" height="${Math.ceil(stripH)}" xmlns="http://www.w3.org/2000/svg">
+        const svg = `<svg width="${imgW}" height="${Math.ceil(stripH)}" xmlns="http://www.w3.org/2000/svg">
           <rect width="100%" height="100%" fill="rgba(0,0,0,0.72)"/>
           ${textEls}
         </svg>`;

@@ -24,8 +24,10 @@ const CAPTURE = gql`
   }
 `;
 
-const FRAME_WIDTH = 640;
-const FRAME_HEIGHT = 360;
+const FRAME_WIDTH = 1280;
+const FRAME_HEIGHT = 720;
+// Backend mendeteksi di ruang 640x360; skala box ke resolusi frame penuh
+const BOX_SCALE = FRAME_WIDTH / 640;
 const DETECT_INTERVAL_MS = 250;
 // Maksimum frame terbaik yang disimpan per panel (memori: ~50KB jpeg per entry)
 const BEST_FRAMES_CAP = 16;
@@ -259,7 +261,9 @@ class PanelEngine {
         });
         const result = await response.json();
         // Engine aktif: YOLO (utama) / OpenCV (fallback) — key `detections` selalu diisi
-        const detected: Box[] = result?.detections ?? result?.yolo ?? result?.opencv ?? [];
+        // Koordinat backend 640x360 → skala ke frame 1280x720
+        const detected: Box[] = ((result?.detections ?? result?.yolo ?? result?.opencv ?? []) as Box[])
+          .map((b) => ({ ...b, x: b.x * BOX_SCALE, y: b.y * BOX_SCALE, width: b.width * BOX_SCALE, height: b.height * BOX_SCALE }));
         // Anti kedip: box dipertahankan beberapa cycle saat deteksi kosong sesaat
         if (detected.length > 0) {
           this.emptyCycles = 0;
