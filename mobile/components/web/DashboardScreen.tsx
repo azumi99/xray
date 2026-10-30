@@ -7,6 +7,7 @@ import { ScanCapture } from '@/components/web/ScanCapture';
 import { subscribeAwbSnapshot } from '@/components/web/awbEvents';
 import { logoutAPI } from '@/lib/api/authAPI';
 import { useAuth } from '@/lib/store/auth';
+import { useGroupModeStore } from '@/lib/store/groupModeStore';
 import { useThemeStore } from '@/lib/store/themeStore';
 import { gql, useQuery } from '@apollo/client';
 import { PackageIcon, TagIcon } from 'lucide-react-native';
@@ -16,12 +17,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 
 const GET_DASHBOARD_AWBS = gql`
-  query GetDashboardAwbs($first: Int, $page: Int, $search: String, $noSearch: Boolean!) {
-    airwaybillxrays(first: $first, page: $page, orderBy: { column: CREATED_AT, order: DESC }) {
+  query GetDashboardAwbs($first: Int, $page: Int, $search: String, $noSearch: Boolean!, $ungrouped: Boolean!, $filters: SearchFilterInput) {
+    airwaybillxrays(first: $first, page: $page, ungrouped: $ungrouped, orderBy: { column: CREATED_AT, order: DESC }) {
       paginatorInfo { total currentPage lastPage hasMorePages }
       data {
         id
-        hostawb { airlinesCode flightNo }
+        hostawb { airlinesCode flightNo origin consigneeCountry }
         airwaybill_number
         hawb
         kurir
@@ -37,11 +38,11 @@ const GET_DASHBOARD_AWBS = gql`
         colly_total
       }
     }
-    searchAirwaybillxrays(search: $search, first: $first, page: $page) @skip(if: $noSearch) {
+    searchAirwaybillxrays(search: $search, first: $first, page: $page, ungrouped: $ungrouped, filters: $filters) @skip(if: $noSearch) {
       paginatorInfo { total currentPage lastPage hasMorePages }
       data {
         id
-        hostawb { airlinesCode flightNo }
+        hostawb { airlinesCode flightNo origin consigneeCountry }
         airwaybill_number
         hawb
         kurir
@@ -74,19 +75,23 @@ const TONES = {
 export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 'scan' }) {
   const { session, isLoading } = useAuth();
   const { theme } = useThemeStore();
+  const { groupMode, setGroupMode } = useGroupModeStore();
   const isDark = theme === 'dark';
   const router = useRouter();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState({ airlines: '', mawb: '', hawb: '', origin: '', dateFrom: '', dateTo: '' });
+  const [appliedFilters, setAppliedFilters] = useState<{ airlines?: string; mawb?: string; hawb?: string; origin?: string; dateFrom?: string; dateTo?: string } | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | number | null>(null);
   const [chartW, setChartW] = useState(0);
   const [sseSnapshot, setSseSnapshot] = useState<{ data: AwbRow[]; paginatorInfo?: { total?: number } } | null>(null);
   const trimmed = search.trim();
+  const filtersActive = !!(trimmed || appliedFilters);
   const { isSmall } = useBreakpoint();
   const { width: winWidth } = useWindowDimensions();
 
   const { data, loading, refetch } = useQuery(GET_DASHBOARD_AWBS, {
-    variables: { first: PAGE_SIZE, page, search: trimmed, noSearch: trimmed === '' },
+    variables: { first: PAGE_SIZE, page, search: trimmed, noSearch: !filtersActive, ungrouped: !groupMode, filters: appliedFilters },
     skip: !session,
     fetchPolicy: 'no-cache',
   });
@@ -96,7 +101,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
   }, [isLoading, session]);
 
   // Reset ke halaman 1 saat pencarian berubah
-  useEffect(() => { setPage(1); }, [trimmed]);
+  useEffect(() => { setPage(1); }, [trimmed, appliedFilters]);
 
   // SSE: refresh realtime saat ada perubahan data AWB di backend
   // (satu koneksi bersama via subscribeAwbSnapshot, lihat awbEvents.ts)
@@ -105,18 +110,20 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
     return subscribeAwbSnapshot((snapshot) => {
       setSseSnapshot(snapshot as { data: AwbRow[]; paginatorInfo?: { total?: number } } | null);
       // Segarkan halaman aktif agar tabel tetap sinkron (SSE snapshot hanya halaman 1)
-      void refetch({ first: PAGE_SIZE, page, search: trimmed, noSearch: trimmed === '' });
+      void refetch({ first: PAGE_SIZE, page, search: trimmed, noSearch: !filtersActive, ungrouped: !groupMode, filters: appliedFilters });
     });
   }, [session, refetch, page, trimmed]);
 
-  const paginator = trimmed ? data?.searchAirwaybillxrays?.paginatorInfo : data?.airwaybillxrays?.paginatorInfo;
+  const paginator = filtersActive ? data?.searchAirwaybillxrays?.paginatorInfo : data?.airwaybillxrays?.paginatorInfo;
   const rows: AwbRow[] = useMemo(() => {
-    const raw = trimmed ? (data?.searchAirwaybillxrays?.data ?? []) : (data?.airwaybillxrays?.data ?? []);
-    return raw.map((row: AwbRow & { hostawb?: { airlinesCode?: string | null; flightNo?: string | null } | null }) => ({
+    const raw = filtersActive ? (data?.searchAirwaybillxrays?.data ?? []) : (data?.airwaybillxrays?.data ?? []);
+    return raw.map((row: AwbRow & { hostawb?: { airlinesCode?: string | null; flightNo?: string | null; origin?: string | null; consigneeCountry?: string | null } | null }) => ({
       ...row,
       airline: [row.hostawb?.airlinesCode, row.hostawb?.flightNo].filter(Boolean).join(' ') || null,
+      origin: row.hostawb?.origin ?? null,
+      consigneeCountry: row.hostawb?.consigneeCountry ?? null,
     }));
-  }, [data, trimmed]);
+  }, [data, filtersActive]);
 
   const total = paginator?.total ?? sseSnapshot?.paginatorInfo?.total ?? rows.length;
   const currentPage = paginator?.currentPage ?? page;
@@ -180,6 +187,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
       page={currentPage}
       lastPage={lastPage}
       total={total}
+      groupMode={groupMode}
       onChangePage={setPage}
       onOpen={(id) => router.push(`/dashboard/detail/${id}`)}
     />
@@ -263,7 +271,76 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
             </>
           ) : null}
 
-          {section === 'awb' ? tableCard : null}
+          {section === 'awb' ? (
+            <>
+              <View style={{ backgroundColor: isDark ? '#111827' : '#FFFFFF', borderRadius: 16, borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', padding: isSmall ? 14 : 18, gap: 14 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+                  <View style={{ gap: 3 }}>
+                    <Text style={{ fontSize: 13, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827' }}>Display Mode</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', borderRadius: 12, borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', backgroundColor: isDark ? '#0B1220' : '#F1F5F9', padding: 3, gap: 2 }}>
+                    {[
+                      { label: 'Grouping', active: groupMode, on: true },
+                      { label: 'Non-Grouping', active: !groupMode, on: false },
+                    ].map((opt) => (
+                      <TouchableOpacity
+                        key={opt.label}
+                        onPress={() => setGroupMode(opt.on)}
+                        style={{ paddingVertical: 8, paddingHorizontal: 18, borderRadius: 9, backgroundColor: opt.active ? '#0284C7' : 'transparent' }}
+                      >
+                        <Text style={{ fontSize: 12.5, fontWeight: '700', color: opt.active ? '#FFFFFF' : (isDark ? '#CBD5E1' : '#475569') }}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                <View style={{ borderTopWidth: 1, borderTopColor: isDark ? '#1F2937' : '#F3F4F6', paddingTop: 14, gap: 10 }}>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+                    {([
+                      { key: 'airlines', label: 'Airlines', placeholder: 'e.g. GA' },
+                      { key: 'mawb', label: 'MAWB', placeholder: 'e.g. 023-00110902' },
+                      { key: 'hawb', label: 'HAWB', placeholder: 'e.g. TC826040075' },
+                      { key: 'origin', label: 'Origin', placeholder: 'e.g. CGK' },
+                    ] as const).map((f) => (
+                      <View key={f.key} style={{ gap: 5, flexGrow: 1, flexBasis: isSmall ? '100%' : 170, minWidth: isSmall ? '100%' : 155 }}>
+                        <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 }}>{f.label}</Text>
+                        <input
+                          value={filters[f.key]}
+                          onChange={(e) => setFilters((prev) => ({ ...prev, [f.key]: e.target.value }))}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { const obj = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')); setAppliedFilters(Object.keys(obj).length ? obj : null); } }}
+                          placeholder={f.placeholder}
+                          style={{ width: '100%', padding: '9px 11px', fontSize: 12.5, borderRadius: 9, border: `1px solid ${isDark ? '#1F2937' : '#E5E7EB'}`, backgroundColor: isDark ? '#0B1220' : '#F8FAFC', color: isDark ? '#E5E7EB' : '#111827', boxSizing: 'border-box' }}
+                        />
+                      </View>
+                    ))}
+                    <View style={{ gap: 5, flexGrow: 2, flexBasis: isSmall ? '100%' : 300, minWidth: isSmall ? '100%' : 260 }}>
+                      <Text style={{ fontSize: 10, fontWeight: '800', color: isDark ? '#94A3B8' : '#64748B', textTransform: 'uppercase', letterSpacing: 0.5 }}>Date Range</Text>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input type="date" value={filters.dateFrom} onChange={(e) => setFilters((prev) => ({ ...prev, dateFrom: e.target.value }))} style={{ flex: 1, minWidth: 0, padding: '9px 10px', fontSize: 12, borderRadius: 9, border: `1px solid ${isDark ? '#1F2937' : '#E5E7EB'}`, backgroundColor: isDark ? '#0B1220' : '#F8FAFC', color: isDark ? '#E5E7EB' : '#111827', boxSizing: 'border-box' }} />
+                        <Text style={{ color: '#9CA3AF', fontSize: 13 }}>–</Text>
+                        <input type="date" value={filters.dateTo} onChange={(e) => setFilters((prev) => ({ ...prev, dateTo: e.target.value }))} style={{ flex: 1, minWidth: 0, padding: '9px 10px', fontSize: 12, borderRadius: 9, border: `1px solid ${isDark ? '#1F2937' : '#E5E7EB'}`, backgroundColor: isDark ? '#0B1220' : '#F8FAFC', color: isDark ? '#E5E7EB' : '#111827', boxSizing: 'border-box' }} />
+                      </View>
+                    </View>
+                  </View>
+                  <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                    <TouchableOpacity
+                      onPress={() => { const obj = Object.fromEntries(Object.entries(filters).filter(([, v]) => v !== '')); setAppliedFilters(Object.keys(obj).length ? obj : null); }}
+                      style={{ paddingVertical: 9, paddingHorizontal: 20, borderRadius: 10, backgroundColor: '#0284C7' }}
+                    >
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 12.5 }}>Apply Filters</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => { setFilters({ airlines: '', mawb: '', hawb: '', origin: '', dateFrom: '', dateTo: '' }); setAppliedFilters(null); }}
+                      style={{ paddingVertical: 9, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB' }}
+                    >
+                      <Text style={{ color: isDark ? '#CBD5E1' : '#475569', fontWeight: '700', fontSize: 12.5 }}>Reset</Text>
+                    </TouchableOpacity>
+                    {appliedFilters ? <Text style={{ fontSize: 11.5, color: '#9CA3AF' }}>Filters active</Text> : null}
+                  </View>
+                </View>
+              </View>
+              {tableCard}
+            </>
+          ) : null}
 
           {section === 'scan' ? <ScanCapture /> : null}
 

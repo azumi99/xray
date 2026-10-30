@@ -19,12 +19,15 @@ export type AwbRow = {
   xray_photos_count?: number | null;
   colly_label?: string | null;
   colly_total?: number | null;
+  origin?: string | null;
+  consigneeCountry?: string | null;
 };
 
 const COLUMNS: Array<{ key: string; label: string; flex: number }> = [
-  { key: 'airline', label: 'Airline', flex: 1.4 },
+  { key: 'airline', label: 'Airlines', flex: 1.4 },
   { key: 'mawb', label: 'MAWB', flex: 1.6 },
   { key: 'hawb', label: 'HAWB', flex: 1.6 },
+  { key: 'origin', label: 'Origin', flex: 1 },
   { key: 'colly', label: 'Colly', flex: 1 },
   { key: 'status', label: 'Status', flex: 1 },
   { key: 'tanggal', label: 'Date', flex: 1.4 },
@@ -45,6 +48,7 @@ export function AwbTable({
   lastPage = 1,
   total,
   onChangePage,
+  groupMode = true,
 }: {
   rows: AwbRow[];
   loading?: boolean;
@@ -53,6 +57,7 @@ export function AwbTable({
   lastPage?: number;
   total?: number;
   onChangePage?: (page: number) => void;
+  groupMode?: boolean;
 }) {
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
@@ -80,6 +85,7 @@ export function AwbTable({
   const cellText = {
     fontSize: 12.5,
     color: textMain,
+    textAlign: 'center',
   } as const;
 
   return (
@@ -98,7 +104,7 @@ export function AwbTable({
       <View style={{ flexDirection: 'row', backgroundColor: headerBg, borderBottomWidth: 1, borderBottomColor: border }}>
         {COLUMNS.map((col) => (
           <View key={col.key} style={cellStyle(col.flex)}>
-            <Text style={{ fontSize: 10.5, fontWeight: '800', color: textHead, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+            <Text style={{ fontSize: 10.5, fontWeight: '800', color: textHead, textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'center' }}>
               {col.label}
             </Text>
           </View>
@@ -135,6 +141,9 @@ export function AwbTable({
               <Text style={cellText}>{row.hawb || '-'}</Text>
             </View>
             <View style={cellStyle(COLUMNS[3].flex)}>
+              <Text style={cellText}>{row.origin || '-'}</Text>
+            </View>
+            <View style={cellStyle(COLUMNS[4].flex)}>
               {(() => {
                 // baris list = wakil grup; tampilkan "idx / total" sebagai badge (gaya status)
                 const m = row.colly_label?.match(/^colly-(\d+)-of-(\d+)$/);
@@ -146,7 +155,7 @@ export function AwbTable({
                 const bg = done ? 'rgba(22, 163, 74, 0.12)' : idx > 0 ? 'rgba(2, 132, 199, 0.12)' : 'rgba(107, 114, 128, 0.12)';
                 const fg = done ? '#16A34A' : idx > 0 ? '#0369A1' : '#6B7280';
                 return (
-                  <View style={{ alignSelf: 'flex-start', backgroundColor: bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <View style={{ alignSelf: 'center', backgroundColor: bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: fg }}>
                       {idx} / {total}
                     </Text>
@@ -154,16 +163,19 @@ export function AwbTable({
                 );
               })()}
             </View>
-            <View style={cellStyle(COLUMNS[4].flex)}>
+            <View style={cellStyle(COLUMNS[5].flex)}>
               {(() => {
                 const collyMatch = row.colly_label?.match(/^colly-(\d+)-of-(\d+)$/);
                 const collected = collyMatch ? Number(collyMatch[1]) : 0;
                 const expected = row.colly_total ?? (collyMatch ? Number(collyMatch[2]) : 0);
-                // 0 foto → WAITING; sebagian ada foto (< quantity) → INCOMPLETE; lengkap → COMPLETE
-                const status = expected > 0 && collected < expected ? (collected > 0 ? 'incomplete' : 'waiting') : (row.status === 'done' ? 'complete' : 'waiting');
+                // Non-grouping: status langsung dari field status record (done → COMPLETE)
+                // Grouping: agregat grup (0 foto → WAITING; sebagian → INCOMPLETE; lengkap → COMPLETE)
+                const status = !groupMode
+                  ? (row.status === 'done' ? 'complete' : 'waiting')
+                  : expected > 0 && collected < expected ? (collected > 0 ? 'incomplete' : 'waiting') : (row.status === 'done' ? 'complete' : 'waiting');
                 const config = STATUS_CONFIG[status];
                 return (
-                  <View style={{ alignSelf: 'flex-start', backgroundColor: config.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                  <View style={{ alignSelf: 'center', backgroundColor: config.bg, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
                     <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: config.fg }}>
                       {status.toUpperCase()}
                     </Text>
@@ -171,9 +183,9 @@ export function AwbTable({
                 );
               })()}
             </View>
-            <View style={cellStyle(COLUMNS[5].flex)}>
+            <View style={cellStyle(COLUMNS[6].flex)}>
               <Text style={cellText}>
-                {row.created_at ? new Date(row.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '-'}
+                {row.created_at ? (() => { const d = new Date(row.created_at); const p = (n: number) => String(n).padStart(2, '0'); return `${p(d.getDate())} ${d.toLocaleString('en-US', { month: 'short' })} ${d.getFullYear()}, ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`; })() : '-'}
               </Text>
             </View>
             <View style={{ ...cellStyle(0.35), alignItems: 'center' }}>

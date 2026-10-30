@@ -10,6 +10,7 @@ import {
   CreateAirwaybillXrayInput,
   CreateWatchedFileInput,
   QueryOrderByClause,
+  SearchFilterInput,
   WatchedFilePage,
 } from './awb.types.js';
 
@@ -44,8 +45,9 @@ export class AwbResolver {
     @Args('orderBy', { type: () => [QueryOrderByClause], nullable: true })
     orderBy?: QueryOrderByClause[],
     @Args('ungrouped', { type: () => Boolean, nullable: true }) ungrouped?: boolean,
+    @Args('filters', { type: () => SearchFilterInput, nullable: true }) filters?: SearchFilterInput,
   ) {
-    return this.awbService.search(search, first, page, orderBy, ungrouped);
+    return this.awbService.search(search, first, page, orderBy, ungrouped, filters);
   }
 
   @Query(() => AirwaybillXray, { name: 'airwaybillXrayByNumber', nullable: true })

@@ -51,6 +51,29 @@ export class HostawbService implements OnModuleDestroy {
     }
   }
 
+  /** Daftar MAWB/HAWB dari manifest yang airlinescode/Origin-nya cocok — untuk filter list */
+  async listAwbByAirlinesOrOrigin(airlines?: string, origin?: string): Promise<{ mawbs: string[]; hawbs: string[] } | null> {
+    const conds: string[] = [];
+    const params: Record<string, string> = {};
+    if (airlines) { conds.push('airlinescode LIKE :airlines'); params.airlines = `%${airlines}%`; }
+    if (origin) { conds.push('Origin LIKE :origin'); params.origin = `%${origin}%`; }
+    if (conds.length === 0) return null;
+    try {
+      const [rows] = await this.getPool().query(
+        `SELECT MasterAWB, HostAWB FROM imp_hostawb WHERE ${conds.join(' OR ')} LIMIT 500`,
+        params,
+      );
+      const list = rows as Record<string, unknown>[];
+      return {
+        mawbs: [...new Set(list.map((r) => String(r.MasterAWB ?? '').trim()).filter(Boolean))],
+        hawbs: [...new Set(list.map((r) => String(r.HostAWB ?? '').trim()).filter(Boolean))],
+      };
+    } catch (error) {
+      this.logger.warn(`hostawb filter lookup failed: ${error instanceof Error ? error.message : error}`);
+      return null;
+    }
+  }
+
   private toHostawbData(row: Record<string, unknown>): HostawbData {
     const str = (v: unknown) => (v === null || v === undefined ? null : String(v));
     const num = (v: unknown) => (v === null || v === undefined || v === '' ? null : Number(v));
@@ -70,6 +93,7 @@ export class HostawbService implements OnModuleDestroy {
       shipperCity: str(row.shippercity),
       consigneeName: str(row.Consigneename),
       consigneeCity: str(row.Consigneecity),
+      consigneeCountry: str(row.Consigneecountry),
       bc11: str(row.bc11),
       tglBc: str(row.tglbc),
       sppb: str(row.SPPB),

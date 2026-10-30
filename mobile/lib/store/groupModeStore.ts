@@ -12,7 +12,7 @@ interface GroupModeState {
 export const useGroupModeStore = create<GroupModeState>()(
   persist(
     (set) => ({
-      groupMode: false,
+      groupMode: true,
       setGroupMode: (on) => set({ groupMode: on }),
       toggleGroupMode: () => set((s) => ({ groupMode: !s.groupMode })),
     }),

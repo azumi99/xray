@@ -53,6 +53,9 @@ export class HostawbData {
   consigneeCity!: string | null;
 
   @Field(() => String, { nullable: true })
+  consigneeCountry!: string | null;
+
+  @Field(() => String, { nullable: true })
   bc11!: string | null;
 
   @Field(() => String, { nullable: true })

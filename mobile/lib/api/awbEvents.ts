@@ -3,6 +3,7 @@
  * List screen subscribe snapshot AWB realtime — refresh saat backend publish event.
  */
 import EventSource from 'react-native-sse';
+import { API_ORIGIN } from '@/constants/api';
 
 export type AwbRowSnapshot = {
   id: string;
@@ -23,8 +24,7 @@ type Listener = (payload: AwbSnapshot) => void;
 let source: EventSource<'snapshot'> | null = null;
 const listeners = new Set<Listener>();
 
-const EVENTS_URL =
-  (process.env.EXPO_PUBLIC_API_BASE_URL || 'https://xray.paratekno.com/api').replace(/\/api$/, '') + '/api/awb-events';
+const EVENTS_URL = `${API_ORIGIN}/api/awb-events`;
 
 function ensureSource() {
   if (source) return;

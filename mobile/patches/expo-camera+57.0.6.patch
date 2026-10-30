@@ -8,11 +8,11 @@ index 0000000..f76dd23
 Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileChanges/last-build.bin differ
 diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin
 new file mode 100644
-index 0000000..7c6986b
+index 0000000..ac6bf4f
 Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.bin differ
 diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock
 new file mode 100644
-index 0000000..2076593
+index 0000000..a70aa0e
 Binary files /dev/null and b/node_modules/expo-camera/android/.gradle/9.2.0/fileHashes/fileHashes.lock differ
 diff --git a/node_modules/expo-camera/android/.gradle/9.2.0/gc.properties b/node_modules/expo-camera/android/.gradle/9.2.0/gc.properties
 new file mode 100644
@@ -32,6 +32,21 @@ index 0000000..f128947
 diff --git a/node_modules/expo-camera/android/.gradle/vcs-1/gc.properties b/node_modules/expo-camera/android/.gradle/vcs-1/gc.properties
 new file mode 100644
 index 0000000..e69de29
+diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+index 999a22c..cf5aa63 100644
+--- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
++++ b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/ExpoCameraView.kt
+@@ -544,7 +544,9 @@ class ExpoCameraView(
+     ImageAnalysis.Builder()
+       .setResolutionSelector(
+         ResolutionSelector.Builder()
+-          .setResolutionStrategy(ResolutionStrategy.HIGHEST_AVAILABLE_STRATEGY)
++          .setResolutionStrategy(
++            ResolutionStrategy(Size(1280, 720), ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER)
++          )
+           .build()
+       )
+       .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
 diff --git a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt b/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt
 index 00a70f6..e98a5cd 100644
 --- a/node_modules/expo-camera/android/src/main/java/expo/modules/camera/analyzers/BarcodeAnalyzer.kt

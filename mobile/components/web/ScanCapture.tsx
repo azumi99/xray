@@ -1,6 +1,7 @@
 import { gql, useMutation } from '@apollo/client';
 import { useThemeStore } from '@/lib/store/themeStore';
 import { subscribeAwbSnapshot } from '@/components/web/awbEvents';
+import { API_ORIGIN } from '@/constants/api';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
@@ -30,8 +31,7 @@ const DETECT_INTERVAL_MS = 250;
 const BEST_FRAMES_CAP = 16;
 // Masa berlaku dedupe capture per indeks (backend restart → id mulai dari 1 lagi)
 const CAPTURED_ID_TTL_MS = 3 * 60 * 1000;
-// Same-origin (relative) supaya jalan di domain mana pun saat produksi
-const VISION_URL = '/api/vision/detect';
+const VISION_URL = `${API_ORIGIN}/api/vision/detect`;
 
 /**
  * Engine per panel (top/side) di level module supaya stream & loop deteksi
@@ -56,6 +56,10 @@ class PanelEngine {
   private bestFrames = new Map<number, { frame: string; box: Box }>();
   /** Indeks yang sudah pernah di-capture — menjaga 1 objek = 1 capture walau backend trigger ulang */
   private capturedIds = new Map<number, number>();
+  /** Hasil capture selesai per panel, bernomor urut objek — dipasangkan seq top ↔ seq side */
+  private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number }> = [];
+  /** Urutan trigger sesi ini — objek ke-N yang selesai ↔ AWB waiting ke-N (id ASC), bukan id tracker */
+  private triggerSeq = 0;
   private handlers: { onTrigger?: (image: string, box?: Box, queueIndex?: number) => void; onFrame?: (image: string) => void } = {};
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
@@ -127,6 +131,8 @@ class PanelEngine {
       }
       stream.getVideoTracks()[0].onended = () => this.stop();
       this.stopped = false;
+      this.completedQueue = [];
+      this.triggerSeq = 0;
       this.emit();
       void this.loop();
     } catch {
@@ -147,6 +153,22 @@ class PanelEngine {
       if (e !== self && e.deviceId === deviceId && !e.stopped) return true;
     }
     return false;
+  }
+
+  /** Ambil completion ber-nomor urut tertentu; entri basi (seq lebih kecil) dibuang */
+  takeCompleted(seq: number): { frame: string; box: Box } | undefined {
+    while (this.completedQueue.length > 0 && this.completedQueue[0].seq < seq) this.completedQueue.shift();
+    const entry = this.completedQueue[0];
+    if (entry && entry.seq === seq) {
+      this.completedQueue.shift();
+      return { frame: entry.frame, box: entry.box };
+    }
+    return undefined;
+  }
+
+  /** Seq completion berikutnya yang tersedia (null = kosong) */
+  peekCompletedSeq(): number | null {
+    return this.completedQueue[0]?.seq ?? null;
   }
 
   stop(clearSaved = true) {
@@ -268,15 +290,18 @@ class PanelEngine {
         // ID tracking tetap dipakai untuk deduplikasi, bukan untuk menentukan urutan AWB.
         const triggered = detected
           .filter((b) => b.trigger)
-          .sort((a, b) => (b.x + b.width / 2) - (a.x + a.width / 2));
+          .sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2));
         for (const trig of triggered) {
           // Indeks unik menjaga 1 objek = 1 capture: indeks yang sudah pernah di-capture dilewati
           if (this.capturedIds.has(trig.id)) continue;
           this.capturedIds.set(trig.id, now);
           const best = this.bestFrames.get(trig.id);
           this.bestFrames.delete(trig.id);
-          // queueIndex = id objek - 1: objek ke-N (indeks unik bentuk+posisi) ↔ AWB waiting ke-N
-          this.handlers.onTrigger?.(best?.frame ?? cleanFrame, best?.box ?? trig, Math.max(0, (trig.id ?? 1) - 1));
+          const seq = this.triggerSeq++;
+          this.completedQueue.push({ frame: best?.frame ?? cleanFrame, box: best?.box ?? trig, ts: now, seq });
+          if (this.completedQueue.length > 32) this.completedQueue.shift();
+          // queueIndex = urutan selesai (FIFO): objek pertama yang keluar ↔ AWB waiting pertama
+          this.handlers.onTrigger?.(best?.frame ?? cleanFrame, best?.box ?? trig, seq);
         }
       } catch {
         this.emptyCycles += 1;
@@ -367,7 +392,6 @@ function CapturePanel({
           const visualIndex = [...snap.boxes]
             .sort((a, z) => (z.x + z.width / 2) - (a.x + a.width / 2))
             .findIndex((x) => x.id === b.id);
-          const label = getBoxLabels(source)[visualIndex];
           return (
             <View
               key={`${labelVersion}-${i}`}
@@ -382,7 +406,7 @@ function CapturePanel({
               }}
             >
               <Text style={{ color: '#fff', backgroundColor: b.trigger ? '#16A34A' : '#0284C7', paddingHorizontal: 5 }}>
-                {label ? `#${visualIndex + 1} ${label}` : `#${visualIndex + 1}`}
+                {`#${visualIndex + 1}`}
               </Text>
             </View>
           );
@@ -410,7 +434,7 @@ function CapturePanel({
       {snap.running && snap.kind === 'camera' && cameras.length > 1 ? (
         <View style={{ paddingHorizontal: 12, paddingBottom: 12, gap: 4 }}>
           <Text style={{ fontSize: 10.5, fontWeight: '700', letterSpacing: 0.4, color: isDark ? '#64748B' : '#94A3B8' }}>
-            KAMERA ({title.toUpperCase()})
+            CAMERA ({title.toUpperCase()})
           </Text>
           <select
             value={engine.deviceId ?? ''}
@@ -419,7 +443,7 @@ function CapturePanel({
           >
             {cameras.map((cam) => (
               <option key={cam.deviceId} value={cam.deviceId}>
-                {cam.label}{PanelEngine.isDeviceInUseByOther(cam.deviceId, engine) ? ' · dipakai panel lain' : ''}
+                {cam.label}{PanelEngine.isDeviceInUseByOther(cam.deviceId, engine) ? ' · in use by another panel' : ''}
               </option>
             ))}
           </select>
@@ -449,8 +473,6 @@ export function ScanCapture() {
       }),
     [],
   );
-
-  const current = waiting[0];
 
   // Waiting list urutan ascending berdasarkan waktu (paling lama diproses lebih dulu)
   const waitingAsc = [...waiting]
@@ -508,22 +530,35 @@ export function ScanCapture() {
     pumping.current = true;
     try {
       while (captureQueue.current.length > 0) {
-        captureQueue.current.sort((a, b) => a.queueIndex - b.queueIndex);
         const job = captureQueue.current.shift()!;
-        // Pasangan tampak samping: objek side yang PUSAT-X-nya paling dekat dengan objek top
-        // yang di-capture (belt sama → posisi horizontal ±sama di kedua kamera).
-        // Jatuh kembali ke frame side terakhir bila side belum sempat merekam.
-        const sideBest = job.box
-          ? engines.get('side')?.getBestNearX(job.box.x + job.box.width / 2)
-          : engines.get('side')?.getBest(job.queueIndex);
+        const sideEngine = engines.get('side');
+        let sideBest: { frame: string; box: Box } | undefined;
+        if (sideEngine?.getSnapshot().running) {
+          // Tunggu completion side dengan nomor urut SAMA dengan job top (belt sama → objek ke-N = ke-N).
+          // Seq lebih kecil = basi (dibuang); seq lebih besar = objek ini terlewat di side.
+          for (let t = 0; t < 24 && !sideBest; t += 1) {
+            sideBest = sideEngine.takeCompleted(job.queueIndex) ?? undefined;
+            if (sideBest) break;
+            const next = sideEngine.peekCompletedSeq();
+            if (next !== null && next > job.queueIndex) break;
+            await new Promise((resolve) => setTimeout(resolve, 250));
+          }
+        }
+        sideBest ??= sideEngine?.getBest(job.queueIndex);
+        if (!sideBest && job.box) sideBest = sideEngine?.getBestNearX(job.box.x + job.box.width / 2);
         const topImage = await cropToBox(job.image, job.box);
         const sideImage = await cropToBox(sideBest?.frame ?? sideFrame.current, sideBest?.box ?? sideBox.current);
-        try {
-          await capture({ variables: { topImage, sideImage, queueIndex: job.queueIndex } });
-          // Queue waiting diperbarui otomatis via SSE (backend publish event setelah capture)
-        } catch (error) {
-          console.error('[XRay] capture failed', error);
+        let sent = false;
+        for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
+          try {
+            await capture({ variables: { topImage, sideImage, queueIndex: job.queueIndex } });
+            sent = true;
+          } catch (error) {
+            console.error(`[XRay] capture failed (attempt ${attempt + 1})`, error);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
         }
+        if (!sent) console.error('[XRay] capture dropped after 3 attempts', job.queueIndex);
       }
     } finally {
       pumping.current = false;
@@ -551,9 +586,6 @@ export function ScanCapture() {
           }}
         />
       </View>
-      <Text style={{ color: '#64748B' }}>
-        {current ? `Next: ${current.airwaybill_number}` : 'No AWB waiting'}
-      </Text>
 
       {/* Waiting List — ascending berdasarkan waktu */}
       <View style={{ borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: 12, overflow: 'hidden', backgroundColor: isDark ? '#111827' : '#FFFFFF' }}>
@@ -589,7 +621,7 @@ export function ScanCapture() {
               <Text style={{ flex: 0.5, fontSize: 12.5, color: isDark ? '#64748B' : '#6B7280' }}>{index + 1}</Text>
               <Text style={{ flex: 2, fontSize: 12.5, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>{item.airwaybill_number}</Text>
               <Text style={{ flex: 1.5, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151' }}>
-                {item.created_at ? new Date(item.created_at).toLocaleString('id-ID', { dateStyle: 'short', timeStyle: 'medium' }) : '-'}
+                {item.created_at ? new Date(item.created_at).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'medium' }) : '-'}
               </Text>
               <View style={{ flex: 0.8, alignItems: 'flex-start' }}>
                 <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>

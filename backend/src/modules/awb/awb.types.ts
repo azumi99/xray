@@ -53,6 +53,16 @@ export class CreateAirwaybillXrayInput {
 }
 
 @InputType()
+export class SearchFilterInput {
+  @Field(() => String, { nullable: true }) mawb?: string;
+  @Field(() => String, { nullable: true }) hawb?: string;
+  @Field(() => String, { nullable: true }) airlines?: string;
+  @Field(() => String, { nullable: true }) origin?: string;
+  @Field(() => String, { nullable: true }) dateFrom?: string;
+  @Field(() => String, { nullable: true }) dateTo?: string;
+}
+
+@InputType()
 export class CreateAirwaybillXrayDetailInput {
   @Field(() => ID) id_airwaybill!: string;
   @Field() xray_photo!: string;

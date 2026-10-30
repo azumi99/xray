@@ -26,7 +26,20 @@ export class AwbEventsController {
       this.events.emitter.on('awb_changed', onChange);
       void sendSnapshot();
 
-      const refresh = setInterval(() => { void sendSnapshot(); }, 2_000);
+      // ponytail: cek fingerprint tiap 2s, push snapshot hanya saat data berubah
+      // (menangkap perubahan dari proses lain; mutasi internal sudah lewat awb_changed)
+      let lastFp = '';
+      void this.awbService.fingerprint().then((fp) => { lastFp = fp; });
+      const refresh = setInterval(async () => {
+        if (closed) return;
+        try {
+          const fp = await this.awbService.fingerprint();
+          if (fp !== lastFp) {
+            lastFp = fp;
+            await sendSnapshot();
+          }
+        } catch { /* db blip: coba lagi tick berikutnya */ }
+      }, 2_000);
 
       return () => {
         closed = true;

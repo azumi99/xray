@@ -355,7 +355,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         if (!cameraRef.current || !permission?.granted) return;
         try {
             // Beri kamera waktu stabil agar frame tidak blur setelah deteksi cepat
-            await new Promise((resolve) => setTimeout(resolve, 300));
+            await new Promise((resolve) => setTimeout(resolve, 100));
             const photo = await cameraRef.current.takePictureAsync({
                 quality: 1,
                 base64: false,
@@ -394,7 +394,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         }
         if (barcodeHandledRef.current) return;
         const stable = [...barcodeSeenRef.current.entries()]
-            .filter(([, v]) => v.count >= 3)
+            .filter(([, v]) => v.count >= 2)
             .sort((a, b) => a[1].y - b[1].y);
         if (stable.length === 0) {
             resetBarcodeScan();
@@ -425,15 +425,15 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             clearTimeout(barcodeSingleTimerRef.current);
             barcodeSingleTimerRef.current = null;
         }
-        if (entry.count < 3) return;
+        if (entry.count < 2) return;
 
-        const stableCount = [...seen.values()].filter((v) => v.count >= 3).length;
+        const stableCount = [...seen.values()].filter((v) => v.count >= 2).length;
         if (stableCount >= 2) {
             // 2 barcode stabil terbaca bersamaan → langsung proses
             finishBarcodeScan();
         } else if (!barcodeSingleTimerRef.current) {
-            // baru 1 stabil: beri jendela 1.6 detik supaya barcode kedua sempat stabil (butuh ~3 frame)
-            barcodeSingleTimerRef.current = setTimeout(finishBarcodeScan, 1600);
+            // baru 1 stabil: beri jendela 250 ms supaya barcode kedua sempat terbaca
+            barcodeSingleTimerRef.current = setTimeout(finishBarcodeScan, 250);
         }
     };
 

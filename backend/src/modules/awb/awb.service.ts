@@ -27,11 +27,30 @@ export class AwbService {
     return rows.map((row) => ({ ...row, xray_photos_count: row.airwaybillXrayDetails?.length ?? 0 }));
   }
 
+  /** Sidik jari murah untuk deteksi perubahan data (dipakai SSE agar tidak push snapshot tiap tick) */
+  async fingerprint(): Promise<string> {
+    const row = await this.awbRepo
+      .createQueryBuilder('awb')
+      .select('COUNT(*)', 'n')
+      .addSelect('MAX(awb.updated_at)', 'last')
+      .getRawOne();
+    return `${row?.n ?? 0}:${row?.last ?? ''}`;
+  }
+
   /**
    * Label colly per baris: grup = (airwaybill_number, hawb), posisi = urutan created_at ASC
    * (insert pertama = colly 1). Format: `colly-2-of-6`.
    */
   private withColly(rows: AirwaybillXray[]) {
+    const labels = this.collyLabels(rows);
+    return rows.map((row) => {
+      const info = labels.get(Number(row.id));
+      return { ...row, colly_label: info?.label ?? null, colly_total: info?.total ?? null };
+    });
+  }
+
+  /** Map id → label colly (posisi created_at ASC dalam grup) + total anggota grup */
+  private collyLabels(rows: AirwaybillXray[]) {
     const groups = new Map<string, AirwaybillXray[]>();
     for (const row of rows) {
       const key = `${row.airwaybill_number ?? ''}|${row.hawb ?? ''}`;
@@ -40,13 +59,31 @@ export class AwbService {
     }
     const labels = new Map<number, { label: string; total: number }>();
     for (const members of groups.values()) {
-      const sorted = [...members].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || a.id - b.id);
+      const sorted = [...members].sort((a, b) => a.id - b.id);
       sorted.forEach((row, i) => labels.set(Number(row.id), { label: `colly-${i + 1}-of-${sorted.length}`, total: sorted.length }));
     }
-    return rows.map((row) => {
-      const info = labels.get(Number(row.id));
-      return { ...row, colly_label: info?.label ?? null, colly_total: info?.total ?? null };
-    });
+    return labels;
+  }
+
+  /** Muat ulang SEMUA anggota grup dari record yang cocok filter (agregat tidak boleh dari subset) */
+  private async fetchFullGroups(matched: AirwaybillXray[], orderKey: string, dir: 'ASC' | 'DESC'): Promise<AirwaybillXray[]> {
+    const seen = new Set<string>();
+    const conds: string[] = [];
+    const params: Record<string, string> = {};
+    for (const [i, r] of matched.entries()) {
+      const key = `${r.airwaybill_number}|${r.hawb ?? ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      if (conds.length >= 100) break;
+      conds.push(`(awb.airwaybill_number = :gm${i} AND IFNULL(awb.hawb, '') = :gh${i})`);
+      params[`gm${i}`] = r.airwaybill_number;
+      params[`gh${i}`] = r.hawb ?? '';
+    }
+    return this.awbRepo.createQueryBuilder('awb')
+      .leftJoinAndSelect('awb.airwaybillXrayDetails', 'detail')
+      .where(`(${conds.join(' OR ')})`, params)
+      .orderBy(`awb.${orderKey}`, dir)
+      .getMany();
   }
 
   /**
@@ -67,14 +104,13 @@ export class AwbService {
     return qty ?? fallback;
   }
 
-  /** Label colly untuk satu baris (query grup dari DB, urut created_at ASC) */
+  /** Label colly untuk satu baris (query grup dari DB, urut id ASC) */
   private async collyGroupOf(awb: Pick<AirwaybillXray, 'airwaybill_number' | 'hawb'>) {
     return this.awbRepo
       .createQueryBuilder('awb')
       .where('awb.airwaybill_number = :num', { num: awb.airwaybill_number })
       .andWhere('(awb.hawb = :hawb OR (awb.hawb IS NULL AND :hawb IS NULL))', { hawb: awb.hawb ?? null })
-      .orderBy('awb.created_at', 'ASC')
-      .addOrderBy('awb.id', 'ASC')
+      .orderBy('awb.id', 'ASC')
       .getMany();
   }
 
@@ -136,17 +172,77 @@ export class AwbService {
     return this.awbRepo.find({ relations: { airwaybillXrayDetails: true }, order: this.order(orderBy) }).then((rows) => this.page(rows, first, page, ungrouped));
   }
 
-  search(search?: string, first?: number, page?: number, orderBy?: QueryOrderByClause[], ungrouped?: boolean) {
+  async search(search?: string, first?: number, page?: number, orderBy?: QueryOrderByClause[], ungrouped?: boolean, filters?: { mawb?: string; hawb?: string; airlines?: string; origin?: string; dateFrom?: string; dateTo?: string }) {
+    const f = {
+      mawb: filters?.mawb?.trim() || undefined,
+      hawb: filters?.hawb?.trim() || undefined,
+      airlines: filters?.airlines?.trim() || undefined,
+      origin: filters?.origin?.trim() || undefined,
+      dateFrom: filters?.dateFrom || undefined,
+      dateTo: filters?.dateTo || undefined,
+    };
     const q = search?.trim();
-    return this.awbRepo.find({ where: q ? [{ airwaybill_number: ILike(`%${q}%`) }, { hawb: ILike(`%${q}%`) }] : undefined, relations: { airwaybillXrayDetails: true }, order: this.order(orderBy) }).then((rows) => this.page(rows, first, page, ungrouped));
+    const hasFilters = !!(q || f.mawb || f.hawb || f.airlines || f.origin || f.dateFrom || f.dateTo);
+    if (!hasFilters) {
+      return this.awbRepo.find({ relations: { airwaybillXrayDetails: true }, order: this.order(orderBy) }).then((rows) => this.page(rows, first, page, ungrouped));
+    }
+    const orderMap = this.order(orderBy) as Record<string, 'ASC' | 'DESC'>;
+    const orderKey = Object.keys(orderMap)[0] ?? 'created_at';
+    const qb = this.awbRepo.createQueryBuilder('awb')
+      .leftJoinAndSelect('awb.airwaybillXrayDetails', 'detail')
+      .orderBy(`awb.${orderKey}`, orderMap[orderKey] ?? 'DESC');
+    if (q) qb.andWhere('(awb.airwaybill_number LIKE :q OR awb.hawb LIKE :q)', { q: `%${q}%` });
+    if (f.mawb) qb.andWhere('awb.airwaybill_number LIKE :mawb', { mawb: `%${f.mawb}%` });
+    if (f.hawb) qb.andWhere('(awb.hawb LIKE :hawb OR awb.airwaybill_number LIKE :hawb)', { hawb: `%${f.hawb}%` });
+    if (f.dateFrom) qb.andWhere('awb.created_at >= :dateFrom', { dateFrom: f.dateFrom });
+    if (f.dateTo) qb.andWhere('awb.created_at <= :dateTo', { dateTo: `${f.dateTo} 23:59:59` });
+    if (f.airlines || f.origin) {
+      const pairs = await this.hostawbService?.listAwbByAirlinesOrOrigin(f.airlines, f.origin);
+      if (!pairs) return this.page([], first, page, ungrouped);
+      const { mawbs, hawbs } = pairs;
+      if (mawbs.length === 0 && hawbs.length === 0) return this.page([], first, page, ungrouped);
+      const conds: string[] = [];
+      const params: Record<string, string[]> = {};
+      if (mawbs.length > 0) { conds.push('awb.airwaybill_number IN (:...fm)'); params.fm = mawbs; }
+      if (hawbs.length > 0) { conds.push('awb.hawb IN (:...fh)'); params.fh = hawbs; }
+      qb.andWhere(`(${conds.join(' OR ')})`, params);
+    }
+    const rows = await qb.getMany();
+    if (rows.length === 0) return this.page([], first, page, ungrouped);
+    // Filter hanya boleh memilih GRUP/RECORD yang tampil; label & agregat colly wajib
+    // dihitung dari SEMUA anggota grup (bukan subset hasil filter), kalau tidak
+    // grup lengkap tampak "incomplete" / posisi colly salah saat filter tanggal.
+    if (ungrouped === false) {
+      const full = await this.fetchFullGroups(rows, orderKey, orderMap[orderKey] ?? 'DESC');
+      return this.page(full, first, page, false);
+    }
+    if (ungrouped === true) {
+      const full = await this.fetchFullGroups(rows, orderKey, orderMap[orderKey] ?? 'DESC');
+      const labelMap = this.collyLabels(full);
+      const data = await Promise.all(rows.map(async (row) => {
+        const info = labelMap.get(Number(row.id));
+        const qtyTotal = await this.collyTotalFor(row, info?.total ?? 1);
+        return { ...row, xray_photos_count: row.airwaybillXrayDetails?.length ?? 0, colly_label: info?.label ?? null, colly_total: qtyTotal };
+      }));
+      const total = data.length;
+      const per = first ?? 15;
+      const lastPage = Math.max(1, Math.ceil(total / per));
+      const current = Math.min(Math.max(1, page ?? 1), lastPage);
+      const slice = data.slice((current - 1) * per, current * per);
+      const paginatorInfo: PaginatorInfo = { count: slice.length, currentPage: current, firstItem: slice[0]?.id ?? null, hasMorePages: current < lastPage, lastItem: slice.at(-1)?.id ?? null, lastPage, perPage: per, total };
+      return { data: slice, paginatorInfo };
+    }
+    return this.page(rows, first, page, ungrouped);
   }
 
   async byNumber(number: string) {
     const row = await this.awbRepo.findOne({ where: { airwaybill_number: number }, relations: { airwaybillXrayDetails: true } }).then((r) => r && this.withCount([r])[0]);
+    row?.airwaybillXrayDetails?.sort((a, b) => a.id - b.id);
     return row ? this.withCollyMembers(row) : null;
   }
   async byId(id: string) {
     const row = await this.awbRepo.findOne({ where: { id: Number(id) }, relations: { airwaybillXrayDetails: true } }).then((r) => r && this.withCount([r])[0]);
+    row?.airwaybillXrayDetails?.sort((a, b) => a.id - b.id);
     return row ? this.withCollyMembers(row) : null;
   }
 
@@ -262,16 +358,15 @@ export class AwbService {
   async capturePair(topImage: string, sideImage: string, queueIndex = 0) {
     this.logger.log(`capturePair received top=${topImage.length} side=${sideImage.length} queue=${queueIndex}`);
     return this.awbRepo.manager.transaction(async (manager) => {
-      // Antrian objek: objek ke-N di layar (urutan kontur) ↔ AWB waiting ke-N (created_at ASC).
-      // queueIndex 0-based; di-clamp ke antrian yang tersedia.
+      // Objek yang selesai lebih dulu ↔ AWB waiting PERTAMA (id ASC = urutan insert).
+      // Frontend mengirim job berurutan + retry, jadi cukup ambil kepala antrean.
       const rows = await manager.getRepository(AirwaybillXray)
         .createQueryBuilder('awb')
         .setLock('pessimistic_write')
         .where('awb.status = :status', { status: 'waiting' })
-        .orderBy('awb.created_at', 'ASC')
-        .addOrderBy('awb.id', 'ASC')
+        .orderBy('awb.id', 'ASC')
         .getMany();
-      const awb = rows[Math.min(Math.max(0, queueIndex), rows.length - 1)];
+      const awb = rows[0];
       if (!awb) throw new NotFoundException('No waiting AWB available');
       // Watermark: mawb.hawb.urutan-of-jumlah — mawb/hawb/jumlah dari manifest (hostawb),
       // urutan = posisi record dalam grup (awb+hawb) berdasar created_at ASC.
@@ -282,17 +377,17 @@ export class AwbService {
       const wmHawb = host?.hawb || awb.hawb || '';
       const qtyTotal = host?.quantity && host.quantity > 0 ? Math.round(host.quantity) : group.length;
       const collyPos = collyIndex >= 0 ? collyIndex + 1 : group.length;
-      const wmParts = [wmMawb, wmHawb, `${collyPos}-of-${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
+      const wmParts = [wmMawb, wmHawb, `${collyPos} of ${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
       const saveImage = async (data: string, label: string) => {
         const raw = data.replace(/^data:image\/\w+;base64,/, '');
         const name = `xray_${awb.id}_${label}_${Date.now()}.jpg`;
         await mkdir(join(process.cwd(), 'uploads'), { recursive: true });
-        // Watermark strip bawah: baris pertama = TOP/SIDE, baris berikutnya mawb.hawb.urutan-of-jumlah
-        // (wrap per 32 char agar tidak terpotong; strip tinggi menyesuaikan jumlah baris).
+        // Watermark strip bawah: satu baris label berformat MAWB_HAWB_POS of QTY_TOP/SIDE
+        // (wrap per 48 char agar tidak terpotong; strip tinggi menyesuaikan jumlah baris).
         const meta = await sharp(Buffer.from(raw, 'base64')).metadata();
-        const fontSize = Math.max(13, Math.round((meta.width ?? 640) / 34));
-        const lineH = fontSize * 1.45;
-        const lines = [label.toUpperCase(), ...(wmParts.join('.').match(/.{1,32}/g) ?? [])];
+        const fontSize = Math.max(10, Math.round((meta.width ?? 640) / 48));
+        const lineH = fontSize * 1.4;
+        const lines = [`${wmParts.join('_')}_${label.toUpperCase()}`].flatMap((l) => l.match(/.{1,48}/g) ?? []);
         const stripH = Math.max(lineH * 1.4, lines.length * lineH + fontSize * 0.5);
         const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const textEls = lines

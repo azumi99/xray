@@ -7,16 +7,20 @@
  * Modul ini membagi satu koneksi ke semua listener (ref-counted).
  */
 
+import { API_ORIGIN } from '@/constants/api';
+
 type AwbSnapshot = { data?: unknown[] };
 type Listener = (payload: AwbSnapshot) => void;
 
 let source: EventSource | null = null;
 const listeners = new Set<Listener>();
 
+const eventsUrl = `${API_ORIGIN}/api/awb-events`;
+
 export function subscribeAwbSnapshot(listener: Listener): () => void {
   listeners.add(listener);
   if (!source) {
-    source = new EventSource('/api/awb-events');
+    source = new EventSource(eventsUrl);
     source.addEventListener('snapshot', (event) => {
       try {
         const payload = JSON.parse((event as MessageEvent).data) as AwbSnapshot;
