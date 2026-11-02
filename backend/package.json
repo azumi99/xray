@@ -30,7 +30,6 @@
   "dependencies": {
     "@apollo/server": "^5.5.1",
     "@as-integrations/express5": "^1.1.2",
-    "@img/sharp-win32-x64": "^0.35.5",
     "@nestjs/apollo": "^14.0.3",
     "@nestjs/common": "^12.0.1",
     "@nestjs/core": "^12.0.1",
@@ -77,5 +76,9 @@
     "typescript": "^6.0.2",
     "vite-tsconfig-paths": "^5.1.4",
     "vitest": "^4.1.2"
+  },
+  "optionalDependencies": {
+    "@img/sharp-win32-x64": "^1.1.0",
+    "@img/sharp-linux-x64": "^1.1.0"
   }
 }
