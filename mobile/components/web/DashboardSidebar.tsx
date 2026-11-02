@@ -1,12 +1,13 @@
 import { useBreakpoint } from '@/components/web/useBreakpoint';
 import { useThemeStore } from '@/lib/store/themeStore';
-import { LayoutDashboardIcon, LogOutIcon, PackageIcon, ScanLineIcon } from 'lucide-react-native';
+import { LayoutDashboardIcon, LogOutIcon, PackageIcon, PrinterIcon, ScanLineIcon } from 'lucide-react-native';
 import React from 'react';
 import { Text, TouchableOpacity, View } from 'react-native';
 
 const NAV_ITEMS = [
   { key: 'dashboard', label: 'Dashboard', icon: LayoutDashboardIcon },
   { key: 'awb', label: 'AWB List', icon: PackageIcon },
+  { key: 'labels', label: 'Print Label', icon: PrinterIcon },
   { key: 'scan', label: 'X-ray Capture', icon: ScanLineIcon },
 ];
 

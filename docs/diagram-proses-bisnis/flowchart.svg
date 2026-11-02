@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1720" viewBox="0 0 1400 1720" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1D2A32"/>
+    </marker>
+  </defs>
+  <style>
+    .shape { fill:#FFFFFF; stroke:#1D2A32; stroke-width:2.5; }
+    .term  { fill:#1D2A32; }
+    .t-term { fill:#FFFFFF; font-size:28px; font-weight:600; }
+    .t-box { fill:#1D2A32; font-size:28px; }
+    .t-dec { fill:#1D2A32; font-size:26px; }
+    .t-lab { font-size:24px; font-weight:600; }
+    .flow  { fill:none; stroke:#1D2A32; stroke-width:2.5; }
+  </style>
+  <rect width="1400" height="1720" fill="#FFFFFF"/>
+
+  <!-- 1. Mulai (terminator) -->
+  <rect class="term" x="590" y="50" width="220" height="70" rx="35"/>
+  <text class="t-term" x="700" y="92" text-anchor="middle">Mulai</text>
+  <path class="flow" d="M700,120 L700,172" marker-end="url(#arr)"/>
+
+  <!-- 2. Operator login -->
+  <rect class="shape" x="470" y="176" width="460" height="84"/>
+  <text class="t-box" x="700" y="225" text-anchor="middle">Operator login ke dashboard</text>
+  <path class="flow" d="M700,260 L700,312" marker-end="url(#arr)"/>
+
+  <!-- 3. Scan barcode -->
+  <rect class="shape" x="470" y="316" width="460" height="84"/>
+  <text class="t-box" x="700" y="352" text-anchor="middle">Scan barcode label AWB
+    <tspan x="700" dy="32">(kamera HP)</tspan></text>
+  <path class="flow" d="M700,400 L700,452" marker-end="url(#arr)"/>
+
+  <!-- 4. Masuk antrian (input/output → jajar genjang) -->
+  <polygon class="shape" points="476,456 924,456 884,540 436,540"/>
+  <text class="t-box" x="700" y="492" text-anchor="middle">AWB masuk antrian
+    <tspan x="700" dy="32">status: menunggu</tspan></text>
+  <path class="flow" d="M700,540 L700,592" marker-end="url(#arr)"/>
+
+  <!-- 5. Kamera memantau (titik balik loop) -->
+  <rect class="shape" x="470" y="596" width="460" height="84"/>
+  <text class="t-box" x="700" y="632" text-anchor="middle">Kamera memantau paket
+    <tspan x="700" dy="32">tampak atas &amp; samping</tspan></text>
+  <path class="flow" d="M700,680 L700,732" marker-end="url(#arr)"/>
+
+  <!-- 6. Keputusan: paket selesai lewat? -->
+  <polygon class="shape" points="700,736 890,850 700,964 510,850"/>
+  <text class="t-dec" x="700" y="844" text-anchor="middle">Paket selesai
+    <tspan x="700" dy="30">lewat?</tspan></text>
+  <!-- cabang belum: kanan → balik ke pantauan -->
+  <path class="flow" d="M890,850 L1150,850 L1150,638 L938,638" marker-end="url(#arr)"/>
+  <text class="t-lab" x="1020" y="832" text-anchor="middle" fill="#B45309">belum</text>
+  <!-- cabang ya -->
+  <path class="flow" d="M700,964 L700,1016" marker-end="url(#arr)"/>
+  <text class="t-lab" x="722" y="996" fill="#15803D">ya</text>
+
+  <!-- 7. Foto otomatis -->
+  <rect class="shape" x="470" y="1020" width="460" height="84"/>
+  <text class="t-box" x="700" y="1056" text-anchor="middle">Foto atas + samping tersimpan
+    <tspan x="700" dy="32">otomatis · sesuai urutan antrian</tspan></text>
+  <path class="flow" d="M700,1104 L700,1156" marker-end="url(#arr)"/>
+
+  <!-- 8. Keputusan: foto lengkap? -->
+  <polygon class="shape" points="700,1160 890,1274 700,1388 510,1274"/>
+  <text class="t-dec" x="700" y="1268" text-anchor="middle">Foto sudah
+    <tspan x="700" dy="30">lengkap?</tspan></text>
+  <!-- cabang belum: kiri → balik ke pantauan -->
+  <path class="flow" d="M510,1274 L250,1274 L250,638 L462,638" marker-end="url(#arr)"/>
+  <text class="t-lab" x="300" y="1256" text-anchor="middle" fill="#B45309">belum</text>
+  <!-- cabang ya -->
+  <path class="flow" d="M700,1388 L700,1440" marker-end="url(#arr)"/>
+  <text class="t-lab" x="722" y="1420" fill="#15803D">ya</text>
+
+  <!-- 9. Status selesai -->
+  <rect class="shape" x="470" y="1444" width="460" height="84"/>
+  <text class="t-box" x="700" y="1493" text-anchor="middle">Status AWB berubah → selesai</text>
+  <path class="flow" d="M700,1528 L700,1580" marker-end="url(#arr)"/>
+
+  <!-- 10. Selesai (terminator) -->
+  <rect class="term" x="590" y="1584" width="220" height="70" rx="35"/>
+  <text class="t-term" x="700" y="1626" text-anchor="middle">Selesai</text>
+</svg>

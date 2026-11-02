@@ -8,6 +8,7 @@ import { AppService } from './app.service.js';
 import { AirwaybillXray, AirwaybillXrayDetail } from './entities/airwaybill-xray.entity.js';
 import { WatchedFile } from './entities/watched-file.entity.js';
 import { User } from './entities/user.entity.js';
+import { LabelFedex } from './entities/label-fedex.entity.js';
 import { AwbService } from './modules/awb/awb.service.js';
 import { AwbResolver } from './modules/awb/awb.resolver.js';
 import { HostawbService } from './modules/awb/hostawb.service.js';
@@ -21,6 +22,7 @@ import { YoloService } from './modules/vision/yolo.service.js';
 import { OpenCvService } from './modules/vision/opencv.service.js';
 import { VisionController } from './modules/vision/vision.controller.js';
 import { UploadsController } from './modules/upload/uploads.controller.js';
+import { LabelsModule } from './modules/labels/labels.module.js';
 
 @Module({
   imports: [
@@ -31,11 +33,12 @@ import { UploadsController } from './modules/upload/uploads.controller.js';
       username: process.env.DB_USER ?? 'root',
       password: process.env.DB_PASSWORD ?? '',
       database: process.env.DB_NAME ?? 'awbxray',
-      entities: [AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User],
+      entities: [AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User, LabelFedex],
       synchronize: false,
       logging: process.env.DB_LOGGING === 'true',
     }),
     TypeOrmModule.forFeature([AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User]),
+    LabelsModule,
     JwtModule.register({ secret: process.env.JWT_SECRET ?? 'dev-secret-change-me', signOptions: { expiresIn: '7d' } }),
     GraphQLModule.forRoot<ApolloDriverConfig>({
       driver: ApolloDriver,

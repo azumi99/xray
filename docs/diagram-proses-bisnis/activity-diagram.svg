@@ -1,0 +1,103 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1580" viewBox="0 0 1400 1580" font-family="Helvetica, Arial, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#1D2A32"/>
+    </marker>
+  </defs>
+  <style>
+    .act   { fill:#FFFFFF; stroke:#1D2A32; stroke-width:2.5; rx:14; }
+    .dec   { fill:#FFFFFF; stroke:#1D2A32; stroke-width:2.5; }
+    .lane  { stroke:#C9C2B2; stroke-width:1.5; }
+    .laneline { stroke:#C9C2B2; stroke-width:1.5; }
+    .t-act { fill:#1D2A32; font-size:26px; }
+    .t-dec { fill:#1D2A32; font-size:25px; }
+    .t-lab { font-size:24px; font-weight:600; }
+    .t-head{ fill:#1D2A32; font-size:30px; font-weight:700; letter-spacing:.04em; }
+    .flow  { fill:none; stroke:#1D2A32; stroke-width:2.5; }
+  </style>
+  <rect width="1400" height="1580" fill="#FFFFFF"/>
+
+  <!-- garis pembagi swimlane -->
+  <line class="laneline" x1="475" y1="40" x2="475" y2="1560"/>
+  <line class="laneline" x1="925" y1="40" x2="925" y2="1560"/>
+  <line class="laneline" x1="30"  y1="92" x2="1370" y2="92"/>
+  <text class="t-head" x="250"  y="76" text-anchor="middle">Operator</text>
+  <text class="t-head" x="700"  y="76" text-anchor="middle">Web Dashboard</text>
+  <text class="t-head" x="1150" y="76" text-anchor="middle">Backend</text>
+
+  <!-- initial node -->
+  <circle cx="250" cy="120" r="12" fill="#1D2A32"/>
+  <path class="flow" d="M250,132 L250,166" marker-end="url(#arr)"/>
+
+  <!-- A1 Operator: log in -->
+  <rect class="act" x="70" y="170" width="360" height="64" rx="14"/>
+  <text class="t-act" x="250" y="208" text-anchor="middle">Log in to dashboard</text>
+  <path class="flow" d="M250,234 L250,310 L491,310" marker-end="url(#arr)"/>
+
+  <!-- A2 Dashboard: show waiting queue -->
+  <rect class="act" x="495" y="278" width="410" height="64" rx="14"/>
+  <text class="t-act" x="700" y="316" text-anchor="middle">Show waiting queue</text>
+  <path class="flow" d="M700,342 L700,378 L250,378 L250,382" marker-end="url(#arr)"/>
+
+  <!-- A3 Operator: scan barcode -->
+  <rect class="act" x="70" y="386" width="360" height="76" rx="14"/>
+  <text class="t-act" x="250" y="416" text-anchor="middle">Scan AWB barcode
+    <tspan x="250" dy="32">(phone camera)</tspan></text>
+  <path class="flow" d="M250,462 L250,526 L931,526" marker-end="url(#arr)"/>
+
+  <!-- A4 Backend: add to queue -->
+  <rect class="act" x="935" y="494" width="430" height="76" rx="14"/>
+  <text class="t-act" x="1150" y="524" text-anchor="middle">Add AWB to queue
+    <tspan x="1150" dy="32">status: waiting</tspan></text>
+  <path class="flow" d="M1150,570 L1150,618 L909,618" marker-end="url(#arr)"/>
+
+  <!-- A5 Dashboard: monitor cameras -->
+  <rect class="act" x="495" y="602" width="410" height="64" rx="14"/>
+  <text class="t-act" x="700" y="640" text-anchor="middle">Monitor top &amp; side cameras</text>
+  <path class="flow" d="M700,666 L700,690" marker-end="url(#arr)"/>
+
+  <!-- D1: package fully passed? -->
+  <polygon class="dec" points="700,690 850,760 700,830 550,760"/>
+  <text class="t-dec" x="700" y="754" text-anchor="middle">Package fully
+    <tspan x="700" dy="30">passed?</tspan></text>
+  <path class="flow" d="M850,760 L1000,760 L1000,650 L909,650" marker-end="url(#arr)"/>
+  <text class="t-lab" x="925" y="744" text-anchor="middle" fill="#B45309">no</text>
+  <path class="flow" d="M700,830 L700,882" marker-end="url(#arr)"/>
+  <text class="t-lab" x="722" y="862" fill="#15803D">yes</text>
+
+  <!-- A6 Dashboard: auto capture -->
+  <rect class="act" x="495" y="886" width="410" height="64" rx="14"/>
+  <text class="t-act" x="700" y="924" text-anchor="middle">Auto-capture top + side photo</text>
+  <path class="flow" d="M700,950 L700,1026 L931,1026" marker-end="url(#arr)"/>
+
+  <!-- A7 Backend: save pair & attach -->
+  <rect class="act" x="935" y="994" width="430" height="76" rx="14"/>
+  <text class="t-act" x="1150" y="1024" text-anchor="middle">Save photo pair · attach to
+    <tspan x="1150" dy="32">first waiting AWB (queue order)</tspan></text>
+  <path class="flow" d="M1150,1070 L1150,1150 L854,1150" marker-end="url(#arr)"/>
+
+  <!-- D2: photos complete? -->
+  <polygon class="dec" points="700,1080 850,1150 700,1220 550,1150"/>
+  <text class="t-dec" x="700" y="1144" text-anchor="middle">Photos
+    <tspan x="700" dy="30">complete?</tspan></text>
+  <path class="flow" d="M550,1150 L250,1150 L250,646 L516,646" marker-end="url(#arr)"/>
+  <text class="t-lab" x="400" y="1132" text-anchor="middle" fill="#B45309">no</text>
+  <path class="flow" d="M700,1220 L700,1272" marker-end="url(#arr)"/>
+  <text class="t-lab" x="722" y="1252" fill="#15803D">yes</text>
+
+  <!-- A8 Backend: status done + push -->
+  <rect class="act" x="935" y="1276" width="430" height="76" rx="14"/>
+  <text class="t-act" x="1150" y="1306" text-anchor="middle">Set status → done
+    <tspan x="1150" dy="32">push realtime update</tspan></text>
+  <path class="flow" d="M1150,1352 L1150,1416 L909,1416" marker-end="url(#arr)"/>
+
+  <!-- A9 Dashboard: list updates -->
+  <rect class="act" x="495" y="1384" width="410" height="76" rx="14"/>
+  <text class="t-act" x="700" y="1414" text-anchor="middle">Waiting list updates
+    <tspan x="700" dy="32">instantly</tspan></text>
+  <path class="flow" d="M700,1460 L700,1500" marker-end="url(#arr)"/>
+
+  <!-- final node -->
+  <circle cx="700" cy="1522" r="16" fill="none" stroke="#1D2A32" stroke-width="3"/>
+  <circle cx="700" cy="1522" r="9" fill="#1D2A32"/>
+</svg>

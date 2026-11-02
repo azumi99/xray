@@ -9,6 +9,7 @@ import { logoutAPI } from '@/lib/api/authAPI';
 import { useAuth } from '@/lib/store/auth';
 import { useGroupModeStore } from '@/lib/store/groupModeStore';
 import { useThemeStore } from '@/lib/store/themeStore';
+import { LabelsScreen } from '@/components/web/LabelsScreen';
 import { gql, useQuery } from '@apollo/client';
 import { PackageIcon, TagIcon } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit/v2';
@@ -203,8 +204,8 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
 
       <View style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <DashboardHeader
-          title={section === 'awb' ? 'AWB List' : section === 'scan' ? 'X-ray Capture' : 'Dashboard'}
-          subtitle={section === 'scan' ? 'Live top and side capture' : `${total} AWB records stored`}
+          title={section === 'awb' ? 'AWB List' : section === 'scan' ? 'X-ray Capture' : section === 'labels' ? 'Print Label' : 'Dashboard'}
+          subtitle={section === 'scan' ? 'Live top and side capture' : section === 'labels' ? 'Import Excel FedEx → print 10 × 5 cm' : `${total} AWB records stored`}
           search={section === 'awb' ? search : undefined}
           onSearch={section === 'awb' ? setSearch : undefined}
         />
@@ -343,6 +344,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
           ) : null}
 
           {section === 'scan' ? <ScanCapture /> : null}
+          {section === 'labels' ? <LabelsScreen /> : null}
 
           <Text style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'center' }}>
             AWB X-Ray Web Dashboard

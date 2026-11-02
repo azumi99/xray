@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Alur Proses Bisnis — AWB X-Ray Scanning</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;0,9..144,650;1,9..144,550&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+<style>
+  :root{
+    --paper:#F5F2EA;      /* kertas krem — dasar */
+    --ink:#1D2A32;        /* tinta */
+    --ink-soft:#56606B;   /* tinta redup (caption) */
+    --teal:#0E7490;       /* aksen layar X-ray */
+    --amber:#B45309;      /* status menunggu — dari UI dashboard */
+    --green:#15803D;      /* status selesai — dari UI dashboard */
+    --card-line:#DAD3C2;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%;background:var(--paper);overflow:hidden}
+  body{display:grid;place-items:center;font-family:'IBM Plex Mono',monospace}
+
+  #stage{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--paper)}
+
+  /* ---- dunia (rig kamera) ---- */
+  #world{position:absolute;left:0;top:0;width:2400px;height:1620px;transform-origin:0 0;will-change:transform}
+
+  /* lapis latar 1: dot grid bernapas */
+  .gridlayer{position:absolute;left:-400px;top:-400px;width:3600px;height:2900px;
+    background-image:radial-gradient(circle,rgba(29,42,50,.14) 1.4px,transparent 1.5px);
+    background-size:38px 38px}
+
+  /* lapis latar 2: sapuan cahaya besar */
+  .sweep{position:absolute;left:0;top:0;width:1400px;height:1100px;border-radius:50%;
+    background:radial-gradient(closest-side,rgba(14,116,144,.10),rgba(14,116,144,0) 70%);
+    filter:blur(10px)}
+  .sweep2{position:absolute;left:0;top:0;width:1200px;height:900px;border-radius:50%;
+    background:radial-gradient(closest-side,rgba(180,83,9,.07),rgba(180,83,9,0) 70%);
+    filter:blur(14px)}
+
+  /* teks hantu latar — bergeser pelan */
+  .ghost{position:absolute;left:340px;top:660px;font-family:'Fraunces',serif;font-style:italic;
+    font-weight:550;font-size:340px;color:transparent;-webkit-text-stroke:2px rgba(29,42,50,.05);
+    letter-spacing:.02em;white-space:nowrap}
+
+  /* ---- header ---- */
+  header{position:absolute;left:120px;top:70px;width:2000px}
+  .eyebrow{font-size:26px;font-weight:600;letter-spacing:.34em;color:var(--teal);text-transform:uppercase}
+  h1{font-family:'Fraunces',serif;font-weight:650;font-size:84px;line-height:1.04;color:var(--ink);
+    margin-top:18px;max-width:1500px}
+  h1 .w{display:inline-block}
+  .rule{height:4px;width:220px;background:var(--teal);margin-top:26px;transform-origin:left center}
+  .legend{position:absolute;right:220px;top:96px;display:flex;gap:16px}
+  .chip{font-size:24px;font-weight:500;padding:10px 22px;border-radius:999px;border:1.5px solid}
+  .chip.w8{color:var(--amber);border-color:rgba(180,83,9,.4);background:rgba(180,83,9,.08)}
+  .chip.dn{color:var(--green);border-color:rgba(21,128,61,.4);background:rgba(21,128,61,.08)}
+
+  /* ---- kartu tahapan ---- */
+  .card{position:absolute;width:560px;height:400px;background:#FFFFFF;border:1.5px solid var(--card-line);
+    border-radius:16px;padding:32px 36px;box-shadow:0 18px 40px rgba(29,42,50,.09);will-change:transform,opacity}
+  .card .no{font-family:'Fraunces',serif;font-style:italic;font-weight:550;font-size:104px;line-height:1;color:var(--teal)}
+  .card h2{font-family:'Fraunces',serif;font-weight:650;font-size:42px;line-height:1.12;color:var(--ink);margin-top:10px}
+  .card p{font-size:26px;line-height:1.5;color:var(--ink-soft);margin-top:16px;white-space:pre-line}
+  .card .chip{position:absolute;right:30px;top:36px;font-size:24px;padding:8px 20px}
+  .card .stamp{position:absolute;left:36px;bottom:30px;width:120px;height:5px;border-radius:3px}
+
+  /* ---- node keputusan (wajik flowchart) ---- */
+  .decision{position:absolute;left:1760px;top:860px;width:160px;height:160px;will-change:transform,opacity}
+  .decision .shape{position:absolute;inset:22px;background:#fff;border:1.5px solid var(--card-line);
+    transform:rotate(45deg);box-shadow:0 14px 30px rgba(29,42,50,.09)}
+  .decision span{position:absolute;inset:0;display:grid;place-items:center;text-align:center;
+    font-size:24px;line-height:1.3;color:var(--ink);font-weight:500}
+
+  /* ---- konektor ---- */
+  #wires{position:absolute;left:0;top:0;width:2400px;height:1620px;overflow:visible}
+  #wires path{fill:none;stroke:var(--ink);stroke-width:3.5;opacity:.75}
+  #wires path.back{stroke:var(--amber);stroke-dasharray:12 9}
+  #wires text{font-family:'IBM Plex Mono',monospace;font-size:24px;font-weight:600}
+  #traveler{position:absolute;left:0;top:0;width:0;height:0}
+  #traveler .halo{position:absolute;left:-19px;top:-19px;width:38px;height:38px;border-radius:50%;
+    border:2px solid var(--teal);opacity:.45}
+  #traveler .dot{position:absolute;left:-10px;top:-10px;width:20px;height:20px;border-radius:50%;
+    background:var(--teal);box-shadow:0 0 0 5px rgba(14,116,144,.15)}
+
+  /* grain statis di atas segalanya */
+  .grain{position:absolute;inset:0;pointer-events:none;opacity:.055;
+    filter:url(#grainF)}
+
+  /* panel debug (?debug=1) */
+  #dbg{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:none;gap:12px;
+    align-items:center;background:rgba(29,42,50,.92);color:#fff;padding:10px 16px;border-radius:10px;
+    font-size:13px;z-index:50}
+  #dbg input{width:420px}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <filter id="grainF"><feTurbulence type="fractalNoise" baseFrequency="0.8" numOctaves="2" stitchTiles="stitch"/>
+  <feColorMatrix type="saturate" values="0"/></filter>
+</svg>
+
+<div id="stage">
+  <div id="world">
+    <div class="gridlayer"></div>
+    <div class="sweep"></div>
+    <div class="sweep2"></div>
+    <div class="ghost">AWB · X-RAY</div>
+
+    <header>
+      <div class="eyebrow">awbxray · peta proses bisnis</div>
+      <h1 id="title"></h1>
+      <div class="rule"></div>
+    </header>
+    <div class="legend">
+      <div class="chip w8">menunggu</div>
+      <div class="chip dn">selesai</div>
+    </div>
+
+    <svg id="wires"></svg>
+    <div class="decision" id="decision"><div class="shape"></div><span>foto<br>lengkap?</span></div>
+    <div id="traveler"><div class="halo"></div><div class="dot"></div></div>
+    <!-- kartu dibangun oleh JS dari config STAGES -->
+  </div>
+  <div class="grain"></div>
+</div>
+
+<div id="dbg"><span id="dbgT">0.00s</span><input id="dbgR" type="range" min="0" max="38" step="0.05" value="0"><span>scrub</span></div>
+
+<script>
+'use strict';
+/* =========================================================
+   Diagram proses bisnis awbxray — editorial terang.
+   Satu dunia; kamera menyusuri tahapan lalu zoom-out.
+   Deterministik: semua visual = fungsi tl.time().
+   ========================================================= */
+const W = 1920, H = 1080, DUR = 38;
+const qs = new URLSearchParams(location.search);
+const CLEAN = qs.has('clean'), DEBUG = qs.has('debug');
+
+const STAGES = [
+  { x:120,  y:420,  no:'01', t:'Akses operator',            cap:'operator masuk ke dashboard\nsatu akun untuk semua fitur',
+    stamp:'var(--ink)' },
+  { x:840,  y:420,  no:'02', t:'Antrian AWB masuk',         cap:'scan barcode lewat kamera HP\nlangsung masuk antrian',
+    chip:{cls:'w8', txt:'menunggu'}, stamp:'var(--amber)' },
+  { x:1560, y:420,  no:'03', t:'Kamera memantau paket',     cap:'tampak atas & samping —\npaket terdeteksi otomatis',
+    stamp:'var(--teal)' },
+  { x:1560, y:1060, no:'04', t:'Foto atas + samping',       cap:'paket selesai lewat →\nfoto tersimpan sendiri\nsesuai urutan antrian',
+    stamp:'var(--teal)' },
+  { x:840,  y:1060, no:'05', t:'Tersimpan & selesai',       cap:'foto terpasang ke AWB yang\ntunggu — status berubah',
+    chip:{cls:'dn', txt:'selesai'}, stamp:'var(--green)' },
+  { x:120,  y:1060, no:'06', t:'Pantauan langsung',         cap:'daftar AWB update sendiri:\nmenunggu · kurang foto · lengkap',
+    stamp:'var(--green)' },
+];
+/* konektor: digambar saat transisi kamera `step` (0 = header→kartu1, dst.) */
+const WIRES = [
+  { d:'M680,620 L828,620',                 step:0 },                                      // 1 → 2
+  { d:'M1400,620 L1548,620',               step:1 },                                      // 2 → 3
+  { d:'M1840,824 L1840,852',               step:2 },                                      // 3 → keputusan
+  { d:'M1840,1028 L1840,1054',             step:2, label:{x:1856,y:1052,txt:'ya',fill:'var(--green)'} },       // keputusan → 4
+  { d:'M1925,940 L1985,940 L1985,830',     step:2, back:true,
+    label:{x:1998,y:892,txt:'belum',fill:'var(--amber)'} },                                    // balik ke 3
+  { d:'M1560,1260 L1412,1260',             step:3 },                                      // 4 → 5
+  { d:'M840,1260 L692,1260',               step:4 },                                      // 5 → 6
+];
+const CARD_W = 560, CARD_H = 400;
+
+const world = document.getElementById('world');
+
+/* ---------- bangun kartu ---------- */
+STAGES.forEach((s) => {
+  const el = document.createElement('article');
+  el.className = 'card';
+  el.style.left = s.x + 'px';
+  el.style.top = s.y + 'px';
+  el.innerHTML =
+    `<div class="no">${s.no}</div>` +
+    (s.chip ? `<div class="chip ${s.chip.cls}">${s.chip.txt}</div>` : '') +
+    `<h2>${s.t}</h2><p>${s.cap}</p><div class="stamp" style="background:${s.stamp}"></div>`;
+  world.appendChild(el);
+  s.el = el;
+});
+
+/* ---------- judul dipecah kata ---------- */
+const TITLE = 'Dari antrian sampai foto X-ray tersimpan';
+const h1 = document.getElementById('title');
+TITLE.split(' ').forEach((w) => {
+  const sp = document.createElement('span');
+  sp.className = 'w'; sp.textContent = w;
+  h1.appendChild(sp); h1.appendChild(document.createTextNode(' '));
+});
+const words = h1.querySelectorAll('.w');
+
+/* ---------- konektor SVG ---------- */
+const wiresSvg = document.getElementById('wires');
+const NS = 'http://www.w3.org/2000/svg';
+wiresSvg.innerHTML = `<defs><marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#1D2A32" opacity=".75"/></marker>
+  <marker id="arrAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M0,0 L10,5 L0,10 z" fill="#B45309" opacity=".85"/></marker></defs>`;
+const wireEls = WIRES.map((w) => {
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', w.d);
+  p.setAttribute('marker-end', w.back ? 'url(#arrAmber)' : 'url(#arr)');
+  if (w.back) p.classList.add('back');
+  p.style.opacity = '0'; /* tersembunyi sampai gilirannya digambar */
+  wiresSvg.appendChild(p);
+  const L = p.getTotalLength();
+  p.dataset.len = L;
+  p.style.strokeDasharray = w.back ? '12 9' : L;
+  p.style.strokeDashoffset = w.back ? 0 : L;
+  let label = null;
+  if (w.label) {
+    label = document.createElementNS(NS, 'text');
+    label.setAttribute('x', w.label.x); label.setAttribute('y', w.label.y);
+    label.setAttribute('fill', w.label.fill);
+    label.textContent = w.label.txt;
+    label.style.opacity = '0';
+    wiresSvg.appendChild(label);
+  }
+  return { p, L, label, step: w.step, back: !!w.back };
+});
+
+/* ---------- rig kamera ---------- */
+const cam = { x: 0, y: 0, s: 1 };
+const applyCam = () => { world.style.transform = `translate(${cam.x}px,${cam.y}px) scale(${cam.s})`; };
+/* pusat area target ditempatkan di tengah panggung */
+function look(vx, vy, vw, vh) {
+  const s = Math.min(W / vw, H / vh);
+  return { s, x: W / 2 - (vx + vw / 2) * s, y: H / 2 - (vy + vh / 2) * s };
+}
+const V_HEADER = look(100, 40, 2060, 430);
+const V_FULL   = look(60, 30, 2140, 1500);
+const cardView = (s) => look(s.x - 80, s.y - 80, CARD_W + 160, CARD_H + 160);
+
+/* waktu kunci */
+const ARRIVE = STAGES.map((_, i) => 4.8 + 4 * i);       /* kamera tiba di kartu i */
+const LEAVE  = ARRIVE.map((t) => t + 2.8);              /* kamera beranjak */
+const PULL_T = LEAVE[5];                                 /* zoom-out ke full */
+
+const tl = gsap.timeline({ paused: true, repeat: -1, defaults: { ease: 'power2.inOut' } });
+const traveler = document.getElementById('traveler');
+const decision = document.getElementById('decision');
+
+/* ---------- 0–3s: pembuka judul ---------- */
+gsap.set('.eyebrow', { opacity: 0, y: 24, filter: 'blur(6px)' });
+gsap.set(words, { opacity: 0, y: 46, filter: 'blur(10px)' });
+gsap.set('.rule', { scaleX: 0 });
+gsap.set('.legend .chip', { opacity: 0, y: 18 });
+tl.to('.eyebrow', { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.7, ease: 'power2.out' }, 0.15);
+words.forEach((w, i) => tl.to(w, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.65, ease: 'power3.out' }, 0.45 + i * 0.07));
+tl.to('.rule', { scaleX: 1, duration: 0.8, ease: 'power3.inOut' }, 1.5);
+tl.to('.legend .chip', { opacity: 1, y: 0, duration: 0.5, ease: 'power2.out', stagger: 0.12 }, 2.0);
+
+/* ---------- kartu: awal tersembunyi ---------- */
+STAGES.forEach((s) => {
+  gsap.set(s.el, { opacity: 0, scale: 1.12, rotation: -1.4, transformOrigin: '50% 60%' });
+  const kids = s.el.querySelectorAll('.no, h2, p, .chip, .stamp');
+  gsap.set(kids, { opacity: 0, y: 22, filter: 'blur(5px)' });
+});
+gsap.set(decision, { opacity: 0, scale: 0.5, transformOrigin: '50% 50%' });
+
+STAGES.forEach((s, i) => {
+  const a = ARRIVE[i];
+  /* kartu "menempel" saat kamera mendekat */
+  tl.to(s.el, { opacity: 1, scale: 1, rotation: 0, duration: 0.6, ease: 'back.out(1.5)' }, a - 0.12);
+  s.el.querySelectorAll('.no, h2, p, .chip, .stamp').forEach((k, ki) => {
+    tl.to(k, { opacity: 1, y: 0, filter: 'blur(0px)', duration: 0.5, ease: 'power3.out' }, a + 0.06 + ki * 0.07);
+  });
+  /* hold: teks bernapas sangat halus (ukuran shot tetap) */
+  tl.to(s.el, { scale: 1.006, duration: 1.4, yoyo: true, repeat: 1, ease: 'sine.inOut' }, a + 1.0);
+
+  /* perpindahan kamera: header → kartu1, lalu kartu → kartu */
+  const to = cardView(s);
+  tl.to(cam, { x: to.x, y: to.y, s: to.s, duration: 1.4, onUpdate: applyCam }, LEAVE[i] - 1.4 + 0.0001);
+
+  /* konektor menuju kartu i+1: digambar selama transisi kamera — traveler menempuhnya */
+  if (i < 5) {
+    const t0 = LEAVE[i] - 1.4;
+    const wires = wireEls.filter((w) => w.step === i);
+    wires.forEach((w, wi) => {
+      const at = t0 + (w.back ? 0.55 : wi * 0.05);
+      if (w.back) {
+        tl.to(w.p, { opacity: 0.8, duration: 0.2 }, at);          /* garis putus: fade + label */
+      } else {
+        tl.to(w.p, { opacity: 0.75, duration: 0.12 }, at);
+        tl.to(w.p, { strokeDashoffset: 0, duration: 1.4 - (at - t0), ease: 'power1.inOut' }, at);
+      }
+      if (w.label) tl.to(w.label, { opacity: 1, duration: 0.25 }, at + 0.35);
+    });
+    /* traveler: lewat jalur utama; di langkah keputusan turun menembus wajik */
+    const main = wires.find((w) => !w.back);
+    const proxy = { p: 0 };
+    tl.to(proxy, {
+      p: 1, duration: 1.4, ease: 'power1.inOut',
+      onUpdate: () => {
+        if (i === 2) {
+          traveler.style.transform = `translate(1840px,${824 + 232 * proxy.p}px)`;
+        } else {
+          const pt = main.p.getPointAtLength(proxy.p * main.L);
+          traveler.style.transform = `translate(${pt.x}px,${pt.y}px)`;
+        }
+      },
+    }, t0);
+    tl.to(traveler, { opacity: 1, duration: 0.15 }, t0);
+    tl.to(traveler, { opacity: 0, duration: 0.15 }, t0 + 1.25);
+  }
+});
+
+/* wajik keputusan muncul saat kamera meninggalkan kartu 3 */
+tl.to(decision, { opacity: 1, scale: 1, duration: 0.55, ease: 'back.out(1.7)' }, LEAVE[2] - 1.35);
+
+/* posisi awal kamera */
+cam.x = V_HEADER.x; cam.y = V_HEADER.y; cam.s = V_HEADER.s; applyCam();
+
+/* ---------- zoom-out ke full diagram ---------- */
+tl.to(cam, { x: V_FULL.x, y: V_FULL.y, s: V_FULL.s, duration: 1.6, onUpdate: applyCam }, PULL_T);
+
+/* semua alur berdenyut sekali — diagram "hidup" */
+wireEls.forEach((w, i) => {
+  const base = w.back ? 0.8 : 0.75;
+  tl.to(w.p, { opacity: 1, duration: 0.18, yoyo: true, repeat: 1 }, PULL_T + 1.7 + i * 0.08);
+});
+
+/* ---------- latar bergerak (dalam tl — deterministik) ---------- */
+const sweep = document.querySelector('.sweep');
+const sweep2 = document.querySelector('.sweep2');
+const ghost = document.querySelector('.ghost');
+const grid = document.querySelector('.gridlayer');
+tl.fromTo(sweep,  { x: -200, y: -100 }, { x: 1500, y: 560, duration: DUR / 2, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 0);
+tl.fromTo(sweep2, { x: 1700, y: 960 }, { x: 300, y: 100, duration: DUR / 2, yoyo: true, repeat: 1, ease: 'sine.inOut' }, 0);
+tl.fromTo(ghost, { x: 0 }, { x: -160, duration: DUR, ease: 'none' }, 0);
+tl.fromTo(grid, { backgroundPositionY: '0px' }, { backgroundPositionY: '38px', duration: DUR, ease: 'none' }, 0);
+
+/* ---------- kontrol: autoplay / clean / debug ---------- */
+const dbg = document.getElementById('dbg');
+if (DEBUG) { dbg.style.display = 'flex'; }
+const range = document.getElementById('dbgR');
+const dbgT = document.getElementById('dbgT');
+range.addEventListener('input', () => seek(parseFloat(range.value)));
+
+function seek(t) {
+  tl.pause();
+  tl.time(Math.max(0, Math.min(DUR, t)), false);
+  applyCam();
+  dbgT.textContent = t.toFixed(2) + 's';
+  range.value = t;
+}
+window.addEventListener('keydown', (e) => {
+  if (e.key === 'r' || e.key === 'R') seek(0), tl.play(0);
+  if (e.code === 'Space') { e.preventDefault(); tl.paused() ? tl.play() : tl.pause(); }
+});
+
+/* autoplay kecuali ?clean=1 (dipakai saat export) */
+if (!CLEAN) tl.play(0); else { tl.pause(0); applyCam(); }
+
+/* ---------- API untuk snapshot (snap.mjs) ---------- */
+window.OPENER = {
+  W, H,
+  ready: false,
+  seek: (t) => seek(t),
+};
+Promise.all([document.fonts.ready]).then(() => {
+  window.OPENER.ready = true;
+});
+</script>
+</body>
+</html>

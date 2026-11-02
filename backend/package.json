@@ -12,9 +12,11 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
+    "dev:all": "sh scripts/dev-all.sh",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main",
     "tunnel": "sh scripts/tunnel.sh",
+    "db:tunnel": "sh scripts/db-tunnel.sh",
     "lint": "oxlint src/ test/",
     "db:generate": "tsx node_modules/typeorm/cli.js migration:generate -d data-source.ts",
     "db:run": "tsx node_modules/typeorm/cli.js migration:run -d data-source.ts",
@@ -50,7 +52,8 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sharp": "^0.35.5",
-    "typeorm": "^1.1.1"
+    "typeorm": "^1.1.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^12.0.0",

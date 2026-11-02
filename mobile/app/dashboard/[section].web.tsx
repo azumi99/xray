@@ -1,7 +1,7 @@
 import { DashboardScreen } from '@/components/web/DashboardScreen';
 import { useLocalSearchParams } from 'expo-router';
 
-const VALID = ['awb', 'scan'] as const;
+const VALID = ['awb', 'scan', 'labels'] as const;
 type Section = (typeof VALID)[number];
 
 export default function DashboardSectionWebScreen() {
