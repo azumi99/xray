@@ -11,6 +11,7 @@ type LabelRow = {
   pcs_mawb?: number | null;
   hawb: string;
   pcs_hawb?: number | null;
+  part?: number | null;
   airlines_name?: string | null;
   flight_no?: string | null;
   route?: string | null;
@@ -134,7 +135,7 @@ export function LabelsScreen() {
       if (arr) arr.push(r); else groups.set(key, [r]);
     }
     for (const arr of groups.values()) {
-      arr.sort((a, b) => a.id - b.id).forEach((r, i) => partMap.set(r.id, i + 1));
+      arr.sort((a, b) => a.id - b.id).forEach((r, i) => partMap.set(r.id, r.part ?? i + 1));
     }
   }
 

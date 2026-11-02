@@ -9,6 +9,7 @@ export type LabelRow = {
   pcs_mawb?: number | null;
   hawb: string;
   pcs_hawb?: number | null;
+  part?: number | null;
   airlines_name?: string | null;
   flight_no?: string | null;
   route?: string | null;
@@ -48,6 +49,7 @@ export class LabelsService {
         hawb: String(hawb ?? '').trim(),
         pcs_mawb: Number(pick(row, 'pcs_mawb')) || null,
         pcs_hawb: Number(pick(row, 'pcs_hawb')) || null,
+        part: null,
         airlines_name: pick(row, 'airlines_name') ? String(pick(row, 'airlines_name')) : null,
         flight_no: pick(row, 'flightno', 'flight_no') ? String(pick(row, 'flightno', 'flight_no')) : null,
         route: pick(row, 'route') ? String(pick(row, 'route')) : null,
@@ -56,13 +58,27 @@ export class LabelsService {
     return rows;
   }
 
-  /** Replace-all: data lama dibuang supaya isi tabel = isi file terakhir */
+  /** Incremental import: expand PCS_HAWB menjadi PART 1..N; part yang sudah ada dilewati. */
   async importRows(rows: LabelRow[]) {
-    if (rows.length === 0) return { imported: 0 };
-    await this.repo.clear();
-    const saved = await this.repo.save(rows.map((r) => this.repo.create(r)));
-    this.logger.log(`import label_fedex: ${saved.length} rows`);
-    return { imported: saved.length };
+    let inserted = 0;
+    let skipped = 0;
+    let updated = 0;
+    for (const row of rows) {
+      const total = Math.max(1, Number(row.pcs_hawb) || 1);
+      for (let part = 1; part <= total; part += 1) {
+        const existing = await this.repo.findOne({ where: { mawb: row.mawb, hawb: row.hawb, part } });
+        if (existing) {
+          await this.repo.update(existing.id, { ...row, part });
+          updated += 1;
+          skipped += 1;
+        } else {
+          await this.repo.save(this.repo.create({ ...row, part }));
+          inserted += 1;
+        }
+      }
+    }
+    this.logger.log(`import label_fedex: inserted=${inserted} updated=${updated} skipped=${skipped}`);
+    return { imported: inserted, updated, skipped };
   }
 
   async importBuffer(buffer: Buffer) {

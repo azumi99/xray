@@ -18,6 +18,9 @@ export class LabelFedex {
   @Column({ type: 'int', nullable: true })
   pcs_hawb?: number | null;
 
+  @Column({ type: 'int', nullable: true })
+  part?: number | null;
+
   @Column({ type: 'varchar', length: 64, nullable: true })
   airlines_name?: string | null;
 
