@@ -885,7 +885,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             ref={cameraRef}
                             autofocus="on"
                             onBarcodeScanned={handleBarcodeScanned}
-                            barcodeScannerSettings={{ barcodeTypes: ['code128', 'code39', 'itf14', 'ean13', 'codabar'] }}
+                            barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'itf14', 'ean13', 'codabar'] }}
                         >
                             <View style={styles.safeAreaWrapper}>
                                 <View style={styles.controlsContainer}>

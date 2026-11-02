@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import JsBarcode from 'jsbarcode';
+import QRCode from 'qrcode';
 import { API_ORIGIN } from '@/constants/api';
 import { useThemeStore } from '@/lib/store/themeStore';
 
@@ -26,12 +27,20 @@ function barcodeDataUrl(value: string, height = 44): string | null {
   }
 }
 
+/** QR ke data-URL — dipakai label print (value mawb_part_jumlah) */
+async function qrDataUrl(value: string): Promise<string | null> {
+  try {
+    return await QRCode.toDataURL(value, { margin: 0, width: 160, errorCorrectionLevel: 'M' });
+  } catch {
+    return null;
+  }
+}
+
 /** Print di window terpisah — bebas dari CSS/quirk react-native-web */
-function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
+async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
   if (rows.length === 0) return;
-  // Barcode MAWB polos; barcode HAWB memuat hawb_part_total (format scan baru)
-  const hawbBc = (r: LabelRow) => `${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`;
-  const section = (title: string, bcVal: string, numText: string, partPcs: string) => {
+  // Barcode MAWB & HAWB polos; QR di kanan section HAWB memuat hawb_part_jumlah
+  const section = (title: string, bcVal: string, numText: string, rightHtml: string) => {
     const bc = barcodeDataUrl(bcVal, 26);
     return `
       <div class="sec">
@@ -41,9 +50,14 @@ function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
             ${bc ? `<img class="bc" src="${bc}" />` : ''}
             <div class="sec-num">${numText}</div>
           </div>
-          <div class="pp">${partPcs}</div>
+          ${rightHtml}
         </div>
       </div>`;
+  };
+  const partPcs = (r: LabelRow, pcs: number | null | undefined) => `<div class="pp">${partMap.get(r.id) ?? '-'}/${pcs ?? '-'}</div>`;
+  const qrRight = async (value: string) => {
+    const qr = await qrDataUrl(value);
+    return qr ? `<img class="qr" src="${qr}" />` : '';
   };
   const html = `<!doctype html><html><head><title>Labels ${rows.length}</title><style>
     @page { size: 100mm 50mm; margin: 0; }
@@ -61,12 +75,13 @@ function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
     .bc { width: 72mm; max-width: 100%; height: auto; margin-top: 0.5mm; }
     .sec-num { font-size: 10pt; font-weight: 800; color: #111; margin-top: 0.5mm; }
     .pp { font-size: 12pt; font-weight: 900; color: #111; padding-right: 2mm; white-space: nowrap; }
-  </style></head><body>${rows.map((r) => `
+    .qr { width: 16mm; height: 16mm; }
+  </style></head><body>${(await Promise.all(rows.map(async (r) => `
     <div class="page">
       <div class="head"><span class="airline">${r.airlines_name ?? '-'}</span><span class="flight">${r.flight_no ?? ''}</span><span class="route">${r.route ?? ''}</span></div>
-      ${section('Air Waybill No:', r.mawb, r.mawb, `${partMap.get(r.id) ?? '-'}/${r.pcs_mawb ?? r.pcs_hawb ?? '-'}`)}
-      ${section('H. Waybill No:', hawbBc(r), r.hawb, `${partMap.get(r.id) ?? '-'}/${r.pcs_hawb ?? r.pcs_mawb ?? '-'}`)}
-    </div>`).join('')}</body></html>`;
+      ${section('Air Waybill No:', r.mawb, r.mawb, partPcs(r, r.pcs_mawb ?? r.pcs_hawb))}
+      ${section('H. Waybill No:', r.hawb, r.hawb, await qrRight(`${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`))}
+    </div>`))).join('')}</body></html>`;
   const w = window.open('', '_blank', 'width=800,height=600');
   if (!w) return;
   w.document.write(html);
@@ -99,7 +114,7 @@ export function LabelsScreen() {
   };
 
   const doPrint = (ids: number[] | null) => {
-    printLabels(ids === null ? filtered : filtered.filter((r) => ids.includes(r.id)), partMap);
+    void printLabels(ids === null ? filtered : filtered.filter((r) => ids.includes(r.id)), partMap);
   };
   const toggle = (id: number) => {
     setSelected((prev) => {
