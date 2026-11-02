@@ -29,30 +29,43 @@ function barcodeDataUrl(value: string, height = 44): string | null {
 /** Print di window terpisah — bebas dari CSS/quirk react-native-web */
 function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
   if (rows.length === 0) return;
-  const bcValue = (r: LabelRow) => `${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`;
+  // Barcode MAWB polos; barcode HAWB memuat hawb_part_total (format scan baru)
+  const hawbBc = (r: LabelRow) => `${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`;
+  const section = (title: string, bcVal: string, numText: string, partPcs: string) => {
+    const bc = barcodeDataUrl(bcVal, 26);
+    return `
+      <div class="sec">
+        <div class="sec-title">${title}</div>
+        <div class="sec-row">
+          <div class="sec-left">
+            ${bc ? `<img class="bc" src="${bc}" />` : ''}
+            <div class="sec-num">${numText}</div>
+          </div>
+          <div class="pp">${partPcs}</div>
+        </div>
+      </div>`;
+  };
   const html = `<!doctype html><html><head><title>Labels ${rows.length}</title><style>
     @page { size: 100mm 50mm; margin: 0; }
     body { margin: 0; font-family: Helvetica, Arial, sans-serif; }
-    .page { width: 100mm; height: 50mm; box-sizing: border-box; border: 1px solid #111; padding: 3mm; page-break-after: always; position: relative; }
-    .head { display: flex; justify-content: space-between; align-items: center; }
-    .airline { font-size: 11pt; font-weight: 900; color: #111; }
-    .flight { font-size: 10pt; color: #111; }
-    .body { margin-top: 2mm; border-top: 2px solid #111; padding-top: 2mm; }
-    .lbl { font-size: 13pt; font-weight: 900; color: #111; }
-    .num { font-size: 11pt; font-weight: 700; color: #111; margin-top: 0.5mm; }
-    .part { font-size: 9pt; font-weight: 700; color: #333; margin-top: 0.5mm; }
-    .bc { width: 100%; margin-top: 1mm; }
-    .meta { position: absolute; right: 3mm; bottom: 3mm; text-align: right; font-size: 10pt; font-weight: 700; color: #111; }
+    .page { width: 100mm; height: 50mm; box-sizing: border-box; border: 1px solid #111; padding: 2.5mm; page-break-after: always; display: flex; flex-direction: column; }
+    .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #111; padding-bottom: 1mm; }
+    .airline { font-size: 9.5pt; font-weight: 900; color: #111; }
+    .flight { font-size: 9pt; font-weight: 700; color: #111; }
+    .route { font-size: 9pt; font-weight: 700; color: #111; }
+    .sec { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+    .sec + .sec { border-top: 1px dashed #999; }
+    .sec-title { font-size: 7.5pt; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.3mm; }
+    .sec-row { display: flex; align-items: center; justify-content: space-between; }
+    .sec-left { flex: 1; min-width: 0; }
+    .bc { width: 72mm; max-width: 100%; height: auto; margin-top: 0.5mm; }
+    .sec-num { font-size: 10pt; font-weight: 800; color: #111; margin-top: 0.5mm; }
+    .pp { font-size: 12pt; font-weight: 900; color: #111; padding-right: 2mm; white-space: nowrap; }
   </style></head><body>${rows.map((r) => `
     <div class="page">
-      <div class="head"><span class="airline">${r.airlines_name ?? '-'}</span><span class="flight">${r.flight_no ?? ''}</span></div>
-      <div class="body">
-        <div class="lbl">HAWB</div>
-        <div class="num">${r.hawb}</div>
-        ${barcodeDataUrl(bcValue(r)) ? `<img class="bc" src="${barcodeDataUrl(bcValue(r))}" />` : ''}
-        <div class="part">PART ${partMap.get(r.id) ?? 1} / ${r.pcs_hawb ?? r.pcs_mawb ?? '-'}</div>
-      </div>
-      <div class="meta">${r.pcs_hawb ?? r.pcs_mawb ?? '-'} PCS<br/>${r.route ?? ''}</div>
+      <div class="head"><span class="airline">${r.airlines_name ?? '-'}</span><span class="flight">${r.flight_no ?? ''}</span><span class="route">${r.route ?? ''}</span></div>
+      ${section('Air Waybill No:', r.mawb, r.mawb, `${partMap.get(r.id) ?? '-'}/${r.pcs_mawb ?? r.pcs_hawb ?? '-'}`)}
+      ${section('H. Waybill No:', hawbBc(r), r.hawb, `${partMap.get(r.id) ?? '-'}/${r.pcs_hawb ?? r.pcs_mawb ?? '-'}`)}
     </div>`).join('')}</body></html>`;
   const w = window.open('', '_blank', 'width=800,height=600');
   if (!w) return;
