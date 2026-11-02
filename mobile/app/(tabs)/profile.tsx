@@ -1,12 +1,12 @@
 import StatusBarSafeArea from '@/components/StatusBarSafeArea';
 import { gql, useQuery } from '@apollo/client';
 import { useRouter } from 'expo-router';
-import { ChevronRight, HelpCircle, Key, Layers, LogOut, Moon, Settings, Sun } from 'lucide-react-native';
+import { ChevronRight, HelpCircle, Key, LogOut, Moon, ScanLine, Settings, Sun } from 'lucide-react-native';
 import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, Switch, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { getCurrentUser, logoutAPI } from '../../lib/api/authAPI';
 import { useAuth } from '../../lib/store/auth';
-import { useBatchModeStore } from '../../lib/store/batchModeStore';
+import { useNewScanStore } from '../../lib/store/newScanStore';
 import { useThemeStore } from '../../lib/store/themeStore';
 
 // GraphQL query untuk AWB statistics
@@ -43,7 +43,8 @@ const ProfileScreen = () => {
   const [userInfo, setUserInfo] = useState<any>(sessionUser ?? null);
   const [loading, setLoading] = useState(true);
   const { theme, toggleTheme } = useThemeStore();
-  const { batchMode, setBatchMode } = useBatchModeStore();
+  const { newScan, setNewScan } = useNewScanStore();
+
   
   const isDark = theme === 'dark';
   
@@ -254,7 +255,7 @@ const ProfileScreen = () => {
               />
             </TouchableOpacity>
 
-            {/* Batch Mode */}
+            {/* New Scan Mode (barcode MAWB_PART_TOTAL) */}
             <View
               style={{
                 backgroundColor: isDark ? '#1F2937' : '#ffffff',
@@ -272,18 +273,18 @@ const ProfileScreen = () => {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1, marginRight: 12 }}>
                 <View style={{ width: 24, alignItems: 'center' }}>
-                  <Layers size={24} color="#9ca3af" />
+                  <ScanLine size={24} color="#9ca3af" />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 15, fontWeight: '500', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 2 }}>Batch Mode</Text>
+                  <Text style={{ fontSize: 15, fontWeight: '500', color: isDark ? '#F9FAFB' : '#1f2937', marginBottom: 2 }}>New Scan</Text>
                   <Text style={{ fontSize: 12, color: '#9ca3af' }}>
-                    {batchMode ? 'Insert as many as manifest quantity per scan' : 'Normal mode (1 scan = 1 record)'}
+                    {newScan ? 'Barcode format MAWB_PART_TOTAL' : 'Normal scan (MAWB / HAWB)'}
                   </Text>
                 </View>
               </View>
               <Switch
-                value={batchMode}
-                onValueChange={setBatchMode}
+                value={newScan}
+                onValueChange={setNewScan}
                 trackColor={{ false: "#d1d5db", true: "#0284c7" }}
                 thumbColor={"#f3f4f6"}
               />

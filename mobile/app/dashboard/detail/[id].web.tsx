@@ -59,14 +59,20 @@ const GET_AWB_DETAIL = gql`
       created_at
       xray_photos_count
       colly_label
+      part
       colly_total
       colly_members {
         id
         colly_index
         colly_label
+        part
         status
         photo_airwaybill
         created_at
+        archived_photos {
+          xray_photo
+          rescan
+        }
         top_photo
         side_photo
       }
@@ -122,7 +128,7 @@ export default function DetailWebScreen() {
   }
 
   const collyMembers: Array<{
-    id: string; colly_index: number; colly_label?: string | null; status?: string | null;
+    id: string; colly_index: number; colly_label?: string | null; part?: number | null; status?: string | null; archived_photos?: Array<{ xray_photo: string; rescan: number }>;
     photo_airwaybill?: string | null; top_photo?: string | null; side_photo?: string | null;
   }> = awb.colly_members ?? [];
 
@@ -262,7 +268,7 @@ export default function DetailWebScreen() {
                         <Text style={{ fontSize: 13, fontWeight: '800', color: '#FFFFFF' }}>{member.colly_index}</Text>
                       </View>
                       <Text style={{ fontSize: 12.5, fontWeight: '800', color: textMain, flexShrink: 1 }}>
-                        {member.colly_label || `Colly ${member.colly_index}`}
+                        {member.part ? `PART ${member.part} / ${awb.colly_total ?? awb.jumlah_koli ?? '-'}` : (member.colly_label || `Colly ${member.colly_index}`)}
                       </Text>
                       <View style={{ backgroundColor: member.status === 'done' ? 'rgba(22, 163, 74, 0.12)' : 'rgba(245, 158, 11, 0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
                         <Text style={{ fontSize: 9.5, fontWeight: '800', letterSpacing: 0.5, color: member.status === 'done' ? '#16A34A' : '#D97706' }}>
@@ -289,6 +295,25 @@ export default function DetailWebScreen() {
                     ) : (
                       <Text style={{ fontSize: 12, color: textSub }}>No photos for this colly</Text>
                     )}
+                    {(member.archived_photos?.length ?? 0) > 0 ? (
+                      <View style={{ gap: 8 }}>
+                        <Text style={{ fontSize: 11, fontWeight: '800', letterSpacing: 0.5, color: textSub }}>RE-SCAN ARCHIVE ({member.archived_photos!.length})</Text>
+                        <View style={{ flexDirection: 'row', gap: 12, flexWrap: 'wrap' }}>
+                          {member.archived_photos!.map((ap) => (
+                            <TouchableOpacity
+                              key={ap.xray_photo}
+                              onPress={() => setPreview({ url: fileUrl(ap.xray_photo), caption: `Re-scan #${ap.rescan}` })}
+                              style={{ borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', opacity: 0.55 }}
+                            >
+                              <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: isSmall ? '100%' : 150, height: isSmall ? 110 : 95, resizeMode: 'cover' }} />
+                              <View style={{ position: 'absolute', top: 6, left: 6, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+                                <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {ap.rescan} · {ap.xray_photo.includes('_top_') ? 'TOP' : 'SIDE'}</Text>
+                              </View>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                 );
               })}

@@ -46,6 +46,7 @@ export class CreateAirwaybillXrayInput {
   @Field(() => String, { nullable: true }) penerima_telepon?: string;
   @Field(() => String, { nullable: true }) berat?: string;
   @Field(() => String, { nullable: true }) jumlah_koli?: string;
+  @Field(() => Int, { nullable: true }) part?: number;
   @Field(() => String, { nullable: true }) isi_barang?: string;
   @Field(() => String, { nullable: true }) nilai_deklarasi?: string;
   @Field(() => String, { nullable: true }) tipe_pajak?: string;

@@ -1,5 +1,5 @@
 import { sendAwb } from '@/lib/api/services/agentScan';
-import { gql, useMutation, useQuery } from '@apollo/client';
+import { gql, useApolloClient, useMutation, useQuery } from '@apollo/client';
 import { CameraType, CameraView, FlashMode, useCameraPermissions } from 'expo-camera';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system/legacy';
@@ -11,6 +11,7 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   ScrollView,
   StyleSheet,
@@ -23,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { COLORS, SPACING } from '../constants/theme';
 import { useAuth } from '@/lib/store/auth';
 import { useBatchModeStore } from '@/lib/store/batchModeStore';
+import { useNewScanStore } from '@/lib/store/newScanStore';
 import { useThemeStore } from '../lib/store/themeStore';
 
 // Interface untuk WatchedFile dari GraphQL
@@ -108,6 +110,31 @@ const GET_WATCHED_FILES_QUERY = gql`
   }
 `;
 
+// Cek duplikat scan baru: mawb + part sudah pernah di-insert?
+const EXISTS_SCAN = gql`
+  query ExistsScan($mawb: String!, $part: Int!) {
+    existsScan(mawb: $mawb, part: $part) {
+      id
+      airwaybill_number
+      hawb
+      part
+      status
+    }
+  }
+`;
+
+// Re-scan: arsip foto terpilih (rescan 1,2,…) + status kembali waiting untuk capture ulang
+const RESCAN_AWB = gql`
+  mutation RescanAwb($id: ID!, $types: [String!]!, $photo: String) {
+    rescanAwb(id: $id, types: $types, photo: $photo) {
+      id
+      airwaybill_number
+      part
+      status
+    }
+  }
+`;
+
 // GraphQL Mutation untuk CreateWatchedFile
 const CREATE_WATCHED_FILE_MUTATION = gql`
   mutation CreateWatchedFile($input: CreateWatchedFileInput!) {
@@ -160,7 +187,13 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     const [createAirwaybill] = useMutation(CREATE_AIRWAYBILL_MUTATION);
     const [createAirwaybillBatch] = useMutation(CREATE_AIRWAYBILL_BATCH_MUTATION);
     const { batchMode } = useBatchModeStore();
+    const { newScan } = useNewScanStore();
     const [createAirwaybillDetail] = useMutation(CREATE_AIRWAYBILL_DETAIL_MUTATION);
+    const client = useApolloClient();
+    const [rescanAwb] = useMutation(RESCAN_AWB);
+    // Re-scan: data duplikat (mawb+part) menunggu keputusan user
+    const [rescanTarget, setRescanTarget] = useState<{ id: string; mawb: string; hawb?: string | null; part: number } | null>(null);
+    const [rescanTypes, setRescanTypes] = useState<'top' | 'side' | 'both'>('both');
 
     // Query watched files - fetch otomatis saat component visible
     const { data: watchedFilesData, refetch: refetchWatchedFiles, loading: watchedFilesLoading, error: watchedFilesError } = useQuery(GET_WATCHED_FILES_QUERY, {
@@ -351,11 +384,11 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
 
 
     // Barcode terdeteksi: snap otomatis + langsung insert tanpa AI
-    const takePictureForBarcode = async (barcodeValue: string, hawbValue?: string) => {
+    const takePictureForBarcode = async (barcodeValue: string, hawbValue?: string, extra?: { part?: number; jumlah_koli?: string }) => {
         if (!cameraRef.current || !permission?.granted) return;
         try {
             // Beri kamera waktu stabil agar frame tidak blur setelah deteksi cepat
-            await new Promise((resolve) => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 50));
             const photo = await cameraRef.current.takePictureAsync({
                 quality: 1,
                 base64: false,
@@ -367,7 +400,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             setOcrDetail(null);
             setExtractedText(hawbValue ? `${barcodeValue} · ${hawbValue}` : barcodeValue);
             setIsSaving(true);
-            await handleDone({ awb: barcodeValue, hawb: hawbValue, photoUri: photo.uri });
+            await handleDone({ awb: barcodeValue, hawb: hawbValue, photoUri: photo.uri, part: extra?.part, jumlahKoli: extra?.jumlah_koli });
         } catch (error) {
             console.error('Barcode capture error:', error);
             Alert.alert('Barcode Error', error instanceof Error ? error.message : 'Failed to capture barcode');
@@ -386,6 +419,33 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         }
     };
 
+    // ==== Re-scan flow ====
+    const cancelRescan = () => {
+        setRescanTarget(null);
+        barcodeHandledRef.current = false;
+        resetBarcodeScan();
+        handleClose();
+    };
+
+    const confirmRescan = async () => {
+        if (!rescanTarget) return;
+        try {
+            setIsSaving(true);
+            const types = rescanTypes === 'both' ? ['top', 'side'] : [rescanTypes];
+            await rescanAwb({ variables: { id: rescanTarget.id, types } });
+            Alert.alert('Re-scan Started', 'Old photos archived. AWB is back to waiting — capture will insert new photos.');
+        } catch (error) {
+            console.error('Rescan error:', error);
+            Alert.alert('Re-scan Error', error instanceof Error ? error.message : 'Failed to start re-scan');
+        } finally {
+            setIsSaving(false);
+            setRescanTarget(null);
+            barcodeHandledRef.current = false;
+            resetBarcodeScan();
+            handleClose();
+        }
+    };
+
     // Proses hasil akhir: barcode paling atas = MAWB, di bawahnya = HAWB (opsional)
     const finishBarcodeScan = () => {
         if (barcodeSingleTimerRef.current) {
@@ -394,13 +454,37 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         }
         if (barcodeHandledRef.current) return;
         const stable = [...barcodeSeenRef.current.entries()]
-            .filter(([, v]) => v.count >= 2)
+            .filter(([, v]) => (newScan ? v.count >= 1 : v.count >= 2))
             .sort((a, b) => a[1].y - b[1].y);
         if (stable.length === 0) {
             resetBarcodeScan();
             return;
         }
         barcodeHandledRef.current = true;
+        // Mode scan baru: barcode tunggal berformat MAWB_PART_TOTAL (underscore)
+        const partsRaw = stable[0][0].split('_');
+        if (newScan && partsRaw.length === 3 && /^\d+$/.test(partsRaw[1]) && /^\d+$/.test(partsRaw[2])) {
+            const [mawb, partStr, totalStr] = partsRaw;
+            // JANGAN langsung insert: cek dulu apakah mawb+part sudah pernah di-scan
+            void (async () => {
+                try {
+                    const { data } = await client.query({
+                        query: EXISTS_SCAN,
+                        variables: { mawb, part: Number(partStr) },
+                        fetchPolicy: 'network-only',
+                    });
+                    const found = data?.existsScan;
+                    if (found) {
+                        setRescanTarget({ id: String(found.id), mawb: found.airwaybill_number, hawb: found.hawb, part: found.part ?? Number(partStr) });
+                        return;
+                    }
+                } catch (e) {
+                    console.error('[NewScan] exists check failed, lanjut insert', e);
+                }
+                void takePictureForBarcode(mawb, undefined, { part: Number(partStr), jumlah_koli: totalStr });
+            })();
+            return;
+        }
         // MAWB = barcode paling atas; HAWB = barcode kedua di bawahnya (jika ada)
         void takePictureForBarcode(stable[0][0], stable[1]?.[0]);
     };
@@ -425,11 +509,11 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             clearTimeout(barcodeSingleTimerRef.current);
             barcodeSingleTimerRef.current = null;
         }
-        if (entry.count < 2) return;
+        if (entry.count < 2 && !newScan) return;
 
         const stableCount = [...seen.values()].filter((v) => v.count >= 2).length;
-        if (stableCount >= 2) {
-            // 2 barcode stabil terbaca bersamaan → langsung proses
+        if (stableCount >= 2 || newScan) {
+            // newScan: barcode tunggal — tidak perlu menunggu barcode kedua
             finishBarcodeScan();
         } else if (!barcodeSingleTimerRef.current) {
             // baru 1 stabil: beri jendela 250 ms supaya barcode kedua sempat terbaca
@@ -562,7 +646,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         onClose();
     };
 
-    const handleDone = async (overrides?: { awb?: string; hawb?: string; ocr?: Record<string, any>; photoUri?: string }) => {
+    const handleDone = async (overrides?: { awb?: string; hawb?: string; ocr?: Record<string, any>; photoUri?: string; part?: number; jumlahKoli?: string }) => {
         const awbNumber = (overrides?.awb ?? extractedText).trim();
         const hawbNumber = (overrides?.hawb ?? extractedHawb).trim();
         const photoUri = overrides?.photoUri ?? capturedPhoto;
@@ -577,7 +661,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
             penerima_kode_pos: ocr.penerima_kode_pos ?? null,
             penerima_telepon: ocr.penerima_telepon ?? null,
             berat: ocr.berat ?? null,
-            jumlah_koli: ocr.jumlah_koli ?? null,
+            jumlah_koli: overrides?.jumlahKoli ?? ocr.jumlah_koli ?? null,
             isi_barang: ocr.isi_barang ?? null,
             nilai_deklarasi: ocr.nilai_deklarasi ?? null,
             tipe_pajak: ocr.tipe_pajak ?? null,
@@ -624,6 +708,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             airwaybill_number: awbNumber,
                             photo_airwaybill: imagePath,
                             hawb: hawbNumber,
+                            part: overrides?.part ?? undefined,
                             ...ocrFields,
                         },
                     },
@@ -634,6 +719,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             airwaybill_number: awbNumber,
                             photo_airwaybill: imagePath,
                             hawb: hawbNumber,
+                            part: overrides?.part ?? undefined,
                             ...ocrFields,
                         },
                     },
@@ -763,6 +849,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
     if (!visible) return null;
 
     return (
+        <>
         <View style={styles.fullScreenOverlay}>
             <View style={styles.modalContent}>
                 {/* Permission not granted yet */}
@@ -1120,6 +1207,43 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                 )}
             </View>
         </View>
+
+        {/* Modal re-scan: data mawb+part sudah ada */}
+        <Modal visible={!!rescanTarget} transparent animationType="fade" onRequestClose={cancelRescan}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+                <View style={{ width: '100%', maxWidth: 400, borderRadius: 18, backgroundColor: isDark ? '#1F2937' : '#FFFFFF', padding: 20, gap: 14 }}>
+                    <Text style={{ fontSize: 16, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827' }}>Data Already Exists</Text>
+                    <View style={{ gap: 6, borderRadius: 12, backgroundColor: isDark ? '#111827' : '#F8FAFC', padding: 12 }}>
+                        <Text style={{ fontSize: 12.5, color: isDark ? '#9CA3AF' : '#6B7280' }}>MAWB: <Text style={{ fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>{rescanTarget?.mawb}</Text></Text>
+                        <Text style={{ fontSize: 12.5, color: isDark ? '#9CA3AF' : '#6B7280' }}>HAWB: <Text style={{ fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>{rescanTarget?.hawb || '-'}</Text></Text>
+                        <Text style={{ fontSize: 12.5, color: isDark ? '#9CA3AF' : '#6B7280' }}>PART: <Text style={{ fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>{rescanTarget?.part ?? '-'}</Text></Text>
+                    </View>
+                    <View style={{ gap: 6 }}>
+                        <Text style={{ fontSize: 11.5, fontWeight: '700', color: isDark ? '#9CA3AF' : '#6B7280' }}>RE-SCAN WHICH PHOTOS?</Text>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                            {(['top', 'side', 'both'] as const).map((opt) => (
+                                <TouchableOpacity
+                                    key={opt}
+                                    onPress={() => setRescanTypes(opt)}
+                                    style={{ flex: 1, paddingVertical: 9, borderRadius: 10, alignItems: 'center', backgroundColor: rescanTypes === opt ? '#0284C7' : (isDark ? '#111827' : '#F1F5F9'), borderWidth: 1, borderColor: rescanTypes === opt ? '#0284C7' : (isDark ? '#1F2937' : '#E5E7EB') }}
+                                >
+                                    <Text style={{ fontSize: 12, fontWeight: '700', color: rescanTypes === opt ? '#FFFFFF' : (isDark ? '#CBD5E1' : '#475569') }}>{opt.toUpperCase()}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 2 }}>
+                        <TouchableOpacity onPress={cancelRescan} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: isDark ? '#374151' : '#E5E7EB' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: isDark ? '#CBD5E1' : '#475569' }}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => void confirmRescan()} disabled={isSaving} style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: isSaving ? '#93C5FD' : '#0284C7' }}>
+                            <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFFFF' }}>{isSaving ? 'Processing…' : 'Re-scan'}</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+        </>
     );
 };
 

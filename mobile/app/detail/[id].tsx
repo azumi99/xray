@@ -45,13 +45,19 @@ const GET_AWB_DETAIL = gql`
       status
       colly_label
       colly_total
+      part
       colly_members {
         id
         colly_index
         colly_label
+        part
         status
         photo_airwaybill
         created_at
+        archived_photos {
+          xray_photo
+          rescan
+        }
         top_photo
         side_photo
       }
@@ -75,6 +81,7 @@ const GET_AWB_DETAIL = gql`
         id
         id_airwaybill
         xray_photo
+        rescan
         created_at
       }
     }
@@ -227,7 +234,8 @@ const DetailScreen = () => {
   const baseUrl = (process.env.EXPO_PUBLIC_GRAPHQL_URL || 'http://localhost:3000/graphql').replace('/graphql', '');
   const fileUrl = (path: string) => path.startsWith('http') ? path : `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
  console.log('data:', data);
-  const xrayPhotos = awbData?.airwaybillXrayDetails?.map((detail: any) => detail.xray_photo ? fileUrl(detail.xray_photo) : null).filter(Boolean) || [];
+  const xrayPhotos = awbData?.airwaybillXrayDetails?.map((detail: any) => detail.xray_photo && detail.rescan == null ? fileUrl(detail.xray_photo) : null).filter(Boolean) || [];
+  const rescanPhotos = (awbData?.airwaybillXrayDetails ?? []).filter((detail: any) => detail.rescan != null && detail.xray_photo);
 
   // Debug: Log untuk melihat data structure
   console.log('AWB Data:', JSON.stringify(awbData, null, 2));
@@ -452,7 +460,7 @@ const DetailScreen = () => {
                 {groupMode && collyTotal > 0 ? (
                   <View style={{ borderRadius: 999, paddingHorizontal: 9, paddingVertical: 3, backgroundColor: collyScanned >= collyTotal ? 'rgba(22, 163, 74, 0.12)' : collyScanned > 0 ? 'rgba(2, 132, 199, 0.12)' : 'rgba(107, 114, 128, 0.12)' }}>
                     <Text style={{ fontSize: 9.5, fontWeight: '800', letterSpacing: 0.8, color: collyScanned >= collyTotal ? '#16A34A' : collyScanned > 0 ? '#0369A1' : '#6B7280' }}>
-                      {collyScanned} / {collyTotal}
+                      {awbData?.part && awbData.part > 0 ? `${awbData.part} / ${collyTotal}` : `${collyScanned} / ${collyTotal}`}
                     </Text>
                   </View>
                 ) : null}
@@ -545,7 +553,7 @@ const DetailScreen = () => {
             </Text>
             {collyMembers.map((m) => {
               const labelMatch = String(m.colly_label ?? '').match(/^colly-(\d+)-of-(\d+)$/);
-              const idx = m.colly_index ?? (labelMatch ? Number(labelMatch[1]) : '?');
+              const idx = m.part && m.part > 0 ? m.part : (m.colly_index ?? (labelMatch ? Number(labelMatch[1]) : '?'));
               const hasPhoto = !!(m.top_photo || m.side_photo);
               return (
                 <View key={m.id} style={{
@@ -557,8 +565,15 @@ const DetailScreen = () => {
                   gap: 10,
                 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: hasPhoto ? '#0284C7' : isDark ? '#374151' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
-                      <Text style={{ fontSize: 12, fontWeight: '800', color: hasPhoto ? '#FFFFFF' : '#9CA3AF' }}>{idx}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                      <View style={{ width: 30, height: 30, borderRadius: 8, backgroundColor: hasPhoto ? '#0284C7' : isDark ? '#374151' : '#F3F4F6', alignItems: 'center', justifyContent: 'center' }}>
+                        <Text style={{ fontSize: 12, fontWeight: '800', color: hasPhoto ? '#FFFFFF' : '#9CA3AF' }}>{idx}</Text>
+                      </View>
+                      <View style={{ borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, backgroundColor: 'rgba(2, 132, 199, 0.12)' }}>
+                        <Text style={{ fontSize: 9.5, fontWeight: '800', letterSpacing: 0.5, color: '#0369A1' }}>
+                          PART {idx} / {collyTotal}
+                        </Text>
+                      </View>
                     </View>
                     <Text style={{ flexShrink: 1, fontSize: 12, color: isDark ? '#9CA3AF' : '#6B7280' }}>
                       {m.created_at ? new Date(m.created_at).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'}
@@ -586,6 +601,21 @@ const DetailScreen = () => {
                       </View>
                     ) : null}
                   </View>
+                  {(m.archived_photos?.length ?? 0) > 0 ? (
+                    <View style={{ gap: 8 }}>
+                      <Text style={{ fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, color: isDark ? '#9CA3AF' : '#6B7280' }}>RE-SCAN ARCHIVE ({m.archived_photos!.length})</Text>
+                      <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
+                        {m.archived_photos!.map((ap) => (
+                          <TouchableOpacity key={ap.xray_photo} activeOpacity={0.9} onPress={() => setSelectedPhoto(fileUrl(ap.xray_photo))} style={{ borderRadius: 10, overflow: 'hidden', opacity: 0.55 }}>
+                            <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: 110, height: 75, resizeMode: 'cover' }} />
+                            <View style={{ position: 'absolute', top: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+                              <Text style={{ fontSize: 9, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {ap.rescan} · {ap.xray_photo.includes('_top_') ? 'TOP' : 'SIDE'}</Text>
+                            </View>
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null}
                 </View>
               );
             })}
@@ -789,6 +819,27 @@ const DetailScreen = () => {
               </TouchableOpacity> */}
             </ScrollView>
           )}
+
+          {rescanPhotos.length > 0 ? (
+            <View style={{ gap: 8 }}>
+              <Text style={{ fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, color: isDark ? '#9CA3AF' : '#6B7280' }}>RE-SCAN ARCHIVE ({rescanPhotos.length})</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                {rescanPhotos.map((detail: any, index: number) => (
+                  <TouchableOpacity
+                    key={index}
+                    activeOpacity={0.9}
+                    onPress={() => setSelectedPhoto(fileUrl(detail.xray_photo))}
+                    style={{ width: 130, height: 88, borderRadius: 12, overflow: 'hidden', opacity: 0.55 }}
+                  >
+                    <Image source={{ uri: fileUrl(detail.xray_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                    <View style={{ position: 'absolute', top: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
+                      <Text style={{ fontSize: 9, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {detail.rescan} · {String(detail.xray_photo).includes('_top_') ? 'TOP' : 'SIDE'}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          ) : null}
         </View>
         ) : null}
 

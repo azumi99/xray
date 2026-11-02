@@ -18,6 +18,7 @@ export type AwbRow = {
   created_at: string;
   xray_photos_count?: number | null;
   colly_label?: string | null;
+  part?: number | null;
   colly_total?: number | null;
   origin?: string | null;
   consigneeCountry?: string | null;

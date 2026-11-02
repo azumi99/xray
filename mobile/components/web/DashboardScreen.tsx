@@ -36,6 +36,7 @@ const GET_DASHBOARD_AWBS = gql`
         created_at
         xray_photos_count
         colly_label
+      part
         colly_total
       }
     }
@@ -56,6 +57,7 @@ const GET_DASHBOARD_AWBS = gql`
         created_at
         xray_photos_count
         colly_label
+      part
         colly_total
       }
     }

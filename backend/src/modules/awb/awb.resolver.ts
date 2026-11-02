@@ -85,6 +85,23 @@ export class AwbResolver {
     return this.awbService.createDetail(input);
   }
 
+  @Query(() => AirwaybillXray, { name: 'existsScan', nullable: true })
+  existsScan(
+    @Args('mawb') mawb: string,
+    @Args('part', { type: () => Int }) part: number,
+  ) {
+    return this.awbService.existsScan(mawb, part);
+  }
+
+  @Mutation(() => AirwaybillXray, { name: 'rescanAwb' })
+  rescanAwb(
+    @Args('id', { type: () => ID }) id: string,
+    @Args('types', { type: () => [String] }) types: string[],
+    @Args('photo', { nullable: true }) photo?: string,
+  ) {
+    return this.awbService.rescan(id, types, photo);
+  }
+
   @Mutation(() => AirwaybillXray, { name: 'updateAirwaybillXrayStatus' })
   updateAirwaybillXrayStatus(
     @Args('id', { type: () => ID }) id: string,

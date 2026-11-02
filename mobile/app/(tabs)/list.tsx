@@ -61,6 +61,7 @@ const GET_AWB_LIST = gql`
         xray_photos_count
         colly_label
         colly_total
+        part
       }
     }
   }
@@ -178,7 +179,9 @@ const ListScreen = () => {
         const expected = latest.colly_total ?? members.length;
         const allDone = members.every((m) => m.status === 'done');
         const status = allDone && scanned >= expected && expected > 0 ? 'done' : scanned > 0 ? 'incomplete' : 'waiting';
-        return { ...latest, status, colly_label: `colly-${scanned}-of-${expected}`, colly_total: expected, groupCount: members.length };
+        // Record scan baru (part): label pakai part-nya, total dari colly_total
+        const partLabel = latest.part && latest.part > 0 ? `colly-${latest.part}-of-${expected}` : null;
+        return { ...latest, status, colly_label: partLabel ?? `colly-${scanned}-of-${expected}`, colly_total: expected, groupCount: members.length };
       });
     }
     return list;

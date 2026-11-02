@@ -10,3 +10,8 @@ coverage/
 *.env
 *.env.*
 !*.env.example
+
+# Electron build artifacts
+electron/dist/
+electron/node_modules/
+electron/web/

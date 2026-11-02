@@ -1,0 +1,42 @@
+{
+  "name": "awbxray-desktop",
+  "version": "1.0.0",
+  "description": "AWB X-Ray desktop (backend lokal + DB server via SSH tunnel)",
+  "main": "main.js",
+  "author": "awbxray",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "dependencies": {
+    "ssh2": "^1.16.0"
+  },
+  "build": {
+    "appId": "com.awbxray.desktop",
+    "productName": "AWB X-Ray",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "web/**/*"],
+    "extraResources": [
+      { "from": "../backend/dist", "to": "backend/dist" },
+      { "from": "../backend/node_modules", "to": "backend/node_modules" },
+      { "from": "../backend/package.json", "to": "backend/package.json" },
+      { "from": "../backend/.env", "to": "backend/.env" },
+      { "from": "../backend/models", "to": "backend/models" }
+    ],
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "artifactName": "AWBXray-Setup-${version}.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true
+    }
+  }
+}

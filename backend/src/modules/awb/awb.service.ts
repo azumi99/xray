@@ -45,6 +45,11 @@ export class AwbService {
     const labels = this.collyLabels(rows);
     return rows.map((row) => {
       const info = labels.get(Number(row.id));
+      // Record hasil scan baru (MAWB_PART_TOTAL): part sendiri + total dari jumlah_koli
+      if (row.part && row.part > 0) {
+        const total = Number(row.jumlah_koli) > 0 ? Number(row.jumlah_koli) : (info?.total ?? 1);
+        return { ...row, colly_label: `colly-${row.part}-of-${total}`, colly_total: total };
+      }
       return { ...row, colly_label: info?.label ?? null, colly_total: info?.total ?? null };
     });
   }
@@ -145,9 +150,11 @@ export class AwbService {
       // semua masih waiting tanpa foto → 0 of total
       const scanned = members.filter((m) => (m.xray_photos_count ?? 0) > 0);
       const lastIdx = scanned.length;
+      // Record dengan part (scan baru MAWB_PART_TOTAL): label pakai part-nya sendiri
+      const partLabel = latest.part && latest.part > 0 ? `colly-${latest.part}-of-${qtyTotal}` : null;
       return {
         ...latest,
-        colly_label: `colly-${lastIdx}-of-${qtyTotal}`,
+        colly_label: partLabel ?? `colly-${lastIdx}-of-${qtyTotal}`,
         colly_total: qtyTotal,
         airwaybillXrayDetails: members.flatMap((m) => m.airwaybillXrayDetails ?? []),
         xray_photos_count: members.reduce((sum, m) => sum + (m.xray_photos_count ?? 0), 0),
@@ -248,7 +255,12 @@ export class AwbService {
 
   /** colly_label/total/members untuk satu record detail: query grup penuh dari DB */
   private async withCollyMembers(row: AirwaybillXray & { xray_photos_count?: number }) {
-    const group = await this.collyGroupOf(row);
+    const groupRaw = await this.collyGroupOf(row);
+    // Urutan tampilan: record dengan part (scan baru) diurut part ASC; tanpa part tetap id ASC
+    const hasParts = groupRaw.some((m) => m.part && m.part > 0);
+    const group = hasParts
+      ? [...groupRaw].sort((a, b) => ((a.part ?? 0) > 0 ? a.part! : 99999) - ((b.part ?? 0) > 0 ? b.part! : 99999) || a.id - b.id)
+      : groupRaw;
     const index = group.findIndex((member) => member.id === row.id);
     const qtyTotal = await this.collyTotalFor(row, group.length);
     const members = await Promise.all(group.map(async (member, i) => {
@@ -257,17 +269,23 @@ export class AwbService {
         ? row
         : await this.awbRepo.findOne({ where: { id: member.id }, relations: { airwaybillXrayDetails: true } });
       const photos = withDetails?.airwaybillXrayDetails ?? [];
-      const top = photos.find((d) => /_top_/.test(d.xray_photo));
-      const side = photos.find((d) => /_side_/.test(d.xray_photo));
+      const top = photos.find((d) => /_top_/.test(d.xray_photo) && d.rescan == null);
+      const side = photos.find((d) => /_side_/.test(d.xray_photo) && d.rescan == null);
+      const archived = photos
+        .filter((d) => d.rescan != null)
+        .sort((a, b) => (a.rescan ?? 0) - (b.rescan ?? 0))
+        .map((d) => ({ xray_photo: d.xray_photo, rescan: d.rescan ?? 0, created_at: d.created_at }));
       return {
         id: member.id,
         colly_index: i + 1,
-        colly_label: `colly-${i + 1}-of-${qtyTotal}`,
+        colly_label: member.part && member.part > 0 ? `colly-${member.part}-of-${qtyTotal}` : `colly-${i + 1}-of-${qtyTotal}`,
+        part: member.part ?? null,
         status: member.status,
         photo_airwaybill: member.photo_airwaybill ?? null,
         created_at: member.created_at,
         top_photo: top?.xray_photo ?? null,
         side_photo: side?.xray_photo ?? null,
+        archived_photos: archived,
       };
     }));
     return { ...row, colly_label: index >= 0 ? `colly-${index + 1}-of-${qtyTotal}` : null, colly_total: qtyTotal, colly_members: members };
@@ -346,6 +364,38 @@ export class AwbService {
     return { ...detail, id_airwaybill: awbId };
   }
 
+  /** Cek duplikat scan baru: mawb + part sudah ada? */
+  async existsScan(mawb: string, part: number) {
+    return this.awbRepo.findOne({
+      where: { airwaybill_number: mawb, part },
+      order: { id: 'DESC' },
+      relations: { airwaybillXrayDetails: true },
+    });
+  }
+
+  /**
+   * Re-scan: arsipkan foto lama terpilih (rescan 1, 2, …), update foto label opsional,
+   * dan kembalikan status ke waiting — pasangan foto baru akan di-insert oleh capture
+   * pipeline dengan rescan NULL.
+   */
+  async rescan(id: string, types: string[], photo?: string): Promise<AirwaybillXray> {
+    const awbId = Number(id);
+    const awb = await this.awbRepo.findOne({ where: { id: awbId }, relations: { airwaybillXrayDetails: true } });
+    if (!awb) throw new NotFoundException('Airwaybill not found');
+    for (const type of types) {
+      const pattern = type === 'top' ? '_top_' : '_side_';
+      const old = awb.airwaybillXrayDetails.filter((d) => d.xray_photo.includes(pattern) && d.rescan == null);
+      if (old.length === 0) continue;
+      const archived = awb.airwaybillXrayDetails.filter((d) => d.xray_photo.includes(pattern) && d.rescan != null);
+      const next = archived.reduce((max, d) => Math.max(max, d.rescan ?? 0), 0) + 1;
+      for (const d of old) await this.detailRepo.update(d.id, { rescan: next });
+    }
+    if (photo) await this.awbRepo.update(awbId, { photo_airwaybill: photo, status: 'waiting' });
+    else await this.awbRepo.update(awbId, { status: 'waiting' });
+    this.events.publish({ action: 'detail-added', id: awbId, airwaybill_number: awb.airwaybill_number });
+    return (await this.byId(id))!;
+  }
+
   async updateStatus(id: string, status: string): Promise<AirwaybillXray> {
     const value = status === 'done' ? 'done' : 'waiting';
     const awb = await this.byId(id);
@@ -375,9 +425,13 @@ export class AwbService {
       const host = await this.hostawbService?.findByAwb(awb.airwaybill_number, awb.hawb);
       const wmMawb = host?.mawb || awb.airwaybill_number;
       const wmHawb = host?.hawb || awb.hawb || '';
-      const qtyTotal = host?.quantity && host.quantity > 0 ? Math.round(host.quantity) : group.length;
-      const collyPos = collyIndex >= 0 ? collyIndex + 1 : group.length;
-      const wmParts = [wmMawb, wmHawb, `${collyPos}OF${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
+      // Mode scan baru (barcode MAWB_PART_TOTAL): pos/total diambil dari field record,
+      // bukan urutan grup colly.
+      const pos = awb.part && awb.part > 0 ? awb.part : (collyIndex >= 0 ? collyIndex + 1 : group.length);
+      const qtyTotal = awb.part && awb.part > 0
+        ? (Number(awb.jumlah_koli) > 0 ? Number(awb.jumlah_koli) : (host?.quantity && host.quantity > 0 ? Math.round(host.quantity) : group.length))
+        : (host?.quantity && host.quantity > 0 ? Math.round(host.quantity) : group.length);
+      const wmParts = [wmMawb, wmHawb, `${pos}OF${qtyTotal}`].filter((v): v is string => !!v).map((v) => v.toUpperCase());
       const saveImage = async (data: string, label: string) => {
         const raw = data.replace(/^data:image\/\w+;base64,/, '');
         const name = `xray_${awb.id}_${label}_${Date.now()}.jpg`;
@@ -407,6 +461,11 @@ export class AwbService {
           .jpeg({ quality: 90 })
           .toBuffer();
         await writeFile(join(process.cwd(), 'uploads', name), marked);
+        // Mode hybrid (DB server + capture lokal): salin file ke uploads server agar
+        // web produksi bisa men-serve-nya (fire-and-forget; via kredensial DB_SSH_*).
+        if (process.env.REMOTE_UPLOADS_SYNC === 'ssh') {
+          void this.syncUploadRemote(name).catch(() => undefined);
+        }
         return `/uploads/${name}`;
       };
       const topPath = await saveImage(topImage, 'top');
@@ -430,6 +489,38 @@ export class AwbService {
     await this.awbRepo.remove(awb);
     this.events.publish({ action: 'deleted', id: Number(id), airwaybill_number: snapshot.airwaybill_number });
     return snapshot;
+  }
+
+  /** Koneksi SFTP tunggal (dipakai ulang) untuk sync uploads ke server */
+  private sftpClient: import('ssh2').Client | null = null;
+  private sftpReady: Promise<import('ssh2').SFTPWrapper> | null = null;
+
+  private async sftp(): Promise<import('ssh2').SFTPWrapper> {
+    const host = process.env.DB_SSH_HOST;
+    const port = Number(process.env.DB_SSH_PORT ?? 23022);
+    const user = process.env.DB_SSH_USER ?? 'root';
+    const pass = process.env.DB_SSH_PASSWORD;
+    if (!host || !pass) throw new Error('DB_SSH_* tidak lengkap untuk sync uploads');
+    if (!this.sftpClient || !this.sftpReady) {
+      const { Client } = await import('ssh2');
+      const client = new Client();
+      this.sftpClient = client;
+      this.sftpReady = new Promise((resolve, reject) => {
+        client.on('ready', () => client.sftp((err, sftp) => (err ? reject(err) : resolve(sftp))));
+        client.on('error', (err) => { this.sftpClient = null; this.sftpReady = null; reject(err); });
+        client.on('close', () => { this.sftpClient = null; this.sftpReady = null; });
+        client.connect({ host, port, username: user, password: pass, readyTimeout: 15000, keepaliveInterval: 15000 });
+      });
+    }
+    return this.sftpReady;
+  }
+
+  /** Salin file hasil capture lokal ke folder uploads server produksi (SFTP via ssh2 — portable) */
+  private async syncUploadRemote(name: string) {
+    const sftp = await this.sftp();
+    await new Promise<void>((resolve, reject) => {
+      sftp.fastPut(join(process.cwd(), 'uploads', name), `/opt/awbxray/backend/uploads/${name}`, (err) => (err ? reject(err) : resolve()));
+    });
   }
 
   watchedFilesPage(first?: number) { return this.fileRepo.find({ take: first ?? 15, order: { created_at: 'DESC' } }).then((data) => ({ data })); }

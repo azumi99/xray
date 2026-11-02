@@ -3,6 +3,19 @@ import { Field, ID, Int, ObjectType } from '@nestjs/graphql';
 import { GraphQLDateTime } from 'graphql-scalars';
 import { HostawbData } from '../modules/awb/hostawb.types.js';
 
+/** Foto lama hasil re-scan (arsip) */
+@ObjectType('CollyArchivedPhoto')
+export class CollyArchivedPhoto {
+  @Field(() => String)
+  xray_photo!: string;
+
+  @Field(() => Int)
+  rescan!: number;
+
+  @Field(() => GraphQLDateTime, { nullable: true })
+  created_at?: Date | null;
+}
+
 /** Anggota grup colly (awb + house): foto label AWB + X-ray tampak depan/samping */
 @ObjectType('CollyMember')
 export class CollyMember {
@@ -15,6 +28,14 @@ export class CollyMember {
   /** contoh: colly-2-of-5 */
   @Field(() => String, { nullable: true })
   colly_label!: string | null;
+
+  /** Nomor part dari barcode MAWB_PART_TOTAL (mode scan baru) */
+  @Field(() => Int, { nullable: true })
+  part?: number | null;
+
+  /** Foto lama hasil re-scan (rescan 1, 2, …) — tampil redup di detail */
+  @Field(() => [CollyArchivedPhoto], { nullable: true })
+  archived_photos?: Array<{ xray_photo: string; rescan: number; created_at: Date }>;
 
   @Field(() => String, { nullable: true })
   status!: string | null;
@@ -46,6 +67,11 @@ export class AirwaybillXrayDetail {
   @Column({ type: 'varchar', length: 500 })
   @Field()
   xray_photo!: string;
+
+  /** 1, 2, … = foto lama yang di-arsipkan oleh re-scan ke-N; NULL = foto aktif terbaru */
+  @Column({ type: 'int', nullable: true })
+  @Field(() => Int, { nullable: true })
+  rescan?: number | null;
 
   @CreateDateColumn()
   @Field(() => GraphQLDateTime)
@@ -114,6 +140,11 @@ export class AirwaybillXray {
   @Column({ type: 'varchar', length: 50, nullable: true })
   @Field(() => String, { nullable: true })
   jumlah_koli!: string | null;
+
+  /** Urutan part (mode scan baru: barcode MAWB_PART_TOTAL) */
+  @Column({ type: 'int', nullable: true })
+  @Field(() => Int, { nullable: true })
+  part?: number | null;
 
   @Column({ type: 'text', nullable: true })
   @Field(() => String, { nullable: true })
