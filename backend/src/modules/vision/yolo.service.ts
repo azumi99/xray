@@ -77,7 +77,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
    *  min_clear_gap: kolom background bersih antara tepi kiri frame dan objek */
   private readonly minClearGapCols = 6;
   private readonly edgeMargin = 6; // objek dianggap penuh di dalam frame bila box menjauh tepi sekian px
-  private readonly bottomBand = 0.87; // buang status bar HiTraX di bawah frame
+  // Status bar viewer kini ditangani ROI (mask frontend) — guard longgar,
+  // hanya buang strip paling bawah agar noise 1-2px tidak lolos.
+  private readonly bottomBand = 0.985;
   private readonly blobMinArea = 3000;
   private readonly blobMaxArea = 100000;
   private readonly blobMinW = 45;
@@ -137,8 +139,18 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       claheOut.delete();
     }
 
-    // ---------- 1) deteksi YOLO ----------
-    const yoloBoxes = await this.inferYolo(gray ?? grayFromRgb(data, W, H), W, H);
+    // ---------- 1) deteksi YOLO dengan BOTTOM PADDING ----------
+    // Objek yang menempel dasar frame sering gagal terdeteksi YOLO (tidak pernah
+    // dilatih edge-bawah). Trik: tambah strip hitam di bawah frame sebelum inferensi
+    // → objek "tidak menempel" menurut model; box digeser balik setelahnya.
+    const grayBase = gray ?? grayFromRgb(data, W, H);
+    const PAD = Math.round(H * 0.25);
+    const grayPadded = new Float32Array((H + PAD) * W);
+    grayPadded.set(grayBase);
+    const yoloBoxes = (await this.inferYolo(grayPadded, W, H + PAD)).map((b) => {
+      const y = Math.max(0, b.y - PAD);
+      return { ...b, y, height: Math.min(H - y, b.height) };
+    });
 
     // ---------- 2) blob gelap (assist domain X-ray) ----------
     const blobBoxes = gray ? this.detectBlobs(gray, W, H) : [];
@@ -279,7 +291,13 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const area = width * height;
       if (area < this.blobMinArea || area > this.blobMaxArea) continue;
       if (width < this.blobMinW || height < this.blobMinH) continue;
-      if (y + height > bottomY) continue; // status bar HiTraX
+      // Objek menempel dasar: JANGAN dibuang — clamp tingginya ke bottomY
+      // (potong bagian yang overlap status bar) selama sisa box masih valid.
+      if (y + height > bottomY) {
+        height = Math.floor(bottomY - y);
+        if (height < this.blobMinH) continue;
+        if (width * height < this.blobMinArea) continue;
+      }
       if (x <= 2 && x + width >= W - 2) continue; // noise full-width
       // --- adaptive edge growth: perluas box selama strip tepi masih < edgeTh (tepi kabur) ---
       const GROW = 4; // px per langkah
