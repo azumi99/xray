@@ -372,6 +372,22 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       if (segStart === -1) segStart = x + width - 1; // trailing gap menutup segmen terakhir
       const lastW = x + width - segStart;
       if (lastW >= this.blobMinW) segments.push({ sx: segStart, sw: lastW });
+      // Celah TIPIS antar segmen = pita terang internal parcel (isi X-ray), bukan
+      // dua parcel — gabung kembali. Dua parcel sungguhan dipisah belt (celah lebar).
+      if (segments.length > 1) {
+        const mergedSegs: Array<{ sx: number; sw: number }> = [segments[0]];
+        for (let si = 1; si < segments.length; si++) {
+          const prev = mergedSegs[mergedSegs.length - 1];
+          const gap = segments[si].sx - (prev.sx + prev.sw);
+          if (gap < Math.min(24, Math.round(height * 0.25))) {
+            prev.sw = segments[si].sx + segments[si].sw - prev.sx;
+          } else {
+            mergedSegs.push(segments[si]);
+          }
+        }
+        segments.length = 0;
+        segments.push(...mergedSegs);
+      }
       if (segments.length > 1) {
         for (const s of segments) out.push({ x: s.sx, y, width: s.sw, height, confidence: 0.25 });
       } else {
@@ -393,9 +409,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const sorted = [...items].sort((a, b) => b.confidence - a.confidence);
     const keep: typeof sorted = [];
     for (const item of sorted) {
-      // merge jika: IoU tinggi ATAU box contained >= 60% di dalam box yang sudah keep
+      // merge jika: IoU tinggi ATAU box contained >= 50% di dalam box yang sudah keep
       // (YOLO setengah objek + blob penuh sering IoU-nya rendah tapi saling contain)
-      if (keep.some((k) => this.iou(k, item) >= this.iouNms || this.containment(k, item) >= 0.6)) continue;
+      if (keep.some((k) => this.iou(k, item) >= this.iouNms || this.containment(k, item) >= 0.5)) continue;
       keep.push(item);
     }
     return keep;
