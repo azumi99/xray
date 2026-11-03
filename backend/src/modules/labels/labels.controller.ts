@@ -2,6 +2,8 @@ import {
   Controller,
   Get,
   Post,
+  Delete,
+  Param,
   Body,
   UploadedFile,
   UseInterceptors,
@@ -17,6 +19,17 @@ export class LabelsController {
   @Get()
   list() {
     return this.labels.list();
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.labels.remove(Number(id));
+  }
+
+  @Post('delete-many')
+  removeMany(@Body() body: { ids?: number[] }) {
+    if (!Array.isArray(body?.ids)) throw new BadRequestException('Body { ids: [] } wajib');
+    return this.labels.removeMany(body.ids.map(Number));
   }
 
   /** Import file Excel (multipart field "file") — replace all */

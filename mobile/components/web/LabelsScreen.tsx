@@ -124,6 +124,33 @@ export function LabelsScreen() {
   const doPrint = (ids: number[] | null) => {
     void printLabels(ids === null ? filtered : filtered.filter((r) => ids.includes(r.id)), partMap);
   };
+
+  const deleteIds = async (ids: number[], label: string) => {
+    if (!window.confirm(`Delete ${label}?`)) return;
+    try {
+      const res = await fetch(`${API_ORIGIN}/api/labels/delete-many`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids }),
+      });
+      if (!res.ok) throw new Error(`Delete failed (${res.status})`);
+      const result = await res.json();
+      await load();
+      setSelected((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
+      toast.show({
+        duration: 3000,
+        placement: 'top right',
+        render: ({ id }) => (
+          <Toast nativeID={id} style={{ backgroundColor: '#DC2626' }}>
+            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Deleted</ToastTitle>
+            <ToastDescription color="#FEF2F2" style={{ color: '#FEF2F2' }}>{`${result.deleted ?? ids.length} ${label} deleted`}</ToastDescription>
+          </Toast>
+        ),
+      });
+    } catch (e) {
+      console.error('[Labels] delete failed', e);
+    }
+  };
   const toggle = (id: number) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -375,9 +402,12 @@ export function LabelsScreen() {
                   <Text style={{ flex: 1.4, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{head.airlines_name ?? '-'}</Text>
                   <Text style={{ flex: 0.8, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{head.flight_no ?? '-'}</Text>
                   <Text style={{ flex: 0.8, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{head.route ?? '-'}</Text>
-                  <View style={{ flex: 0.8, alignItems: 'center' }}>
-                    <TouchableOpacity onPress={() => doPrint(members.map((m) => m.id))} style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#0284C7' }}>
-                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 11 }}>Print All</Text>
+                  <View style={{ flex: 0.8, alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'center' }}>
+                    <TouchableOpacity onPress={() => doPrint(members.map((m) => m.id))} style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#0284C7' }}>
+                      <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 11 }}>Print</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => void deleteIds(members.map((m) => m.id), `group ${key}`)} style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#DC2626' }}>
+                      <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 11 }}>Del</Text>
                     </TouchableOpacity>
                   </View>
                 </TouchableOpacity>
@@ -393,9 +423,12 @@ export function LabelsScreen() {
                     <Text style={{ flex: 1.4 }} />
                     <Text style={{ flex: 0.8, fontSize: 11.5, color: '#94A3B8', textAlign: 'center' }}>id {row.id}</Text>
                     <Text style={{ flex: 0.8 }} />
-                    <View style={{ flex: 0.8, alignItems: 'center' }}>
-                      <TouchableOpacity onPress={() => doPrint([row.id])} style={{ paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#0284C7' }}>
+                    <View style={{ flex: 0.8, alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'center' }}>
+                      <TouchableOpacity onPress={() => doPrint([row.id])} style={{ paddingVertical: 4, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, borderColor: '#0284C7' }}>
                         <Text style={{ color: '#0284C7', fontWeight: '700', fontSize: 10.5 }}>Print</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => void deleteIds([row.id], `part ${partMap.get(row.id) ?? row.id}`)} style={{ paddingVertical: 4, paddingHorizontal: 9, borderRadius: 8, borderWidth: 1, borderColor: '#DC2626' }}>
+                        <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 10.5 }}>Del</Text>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -418,9 +451,12 @@ export function LabelsScreen() {
               <Text style={{ flex: 1.4, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{row.airlines_name ?? '-'}</Text>
               <Text style={{ flex: 0.8, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{row.flight_no ?? '-'}</Text>
               <Text style={{ flex: 0.8, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{row.route ?? '-'}</Text>
-              <View style={{ flex: 0.8, alignItems: 'center' }}>
-                <TouchableOpacity onPress={() => doPrint([row.id])} style={{ paddingVertical: 5, paddingHorizontal: 12, borderRadius: 8, backgroundColor: '#0284C7' }}>
+              <View style={{ flex: 0.8, alignItems: 'center', flexDirection: 'row', gap: 4, justifyContent: 'center' }}>
+                <TouchableOpacity onPress={() => doPrint([row.id])} style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#0284C7' }}>
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 11 }}>Print</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => void deleteIds([row.id], `part ${partMap.get(row.id) ?? row.id}`)} style={{ paddingVertical: 5, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#DC2626' }}>
+                  <Text style={{ color: '#DC2626', fontWeight: '700', fontSize: 11 }}>Del</Text>
                 </TouchableOpacity>
               </View>
             </View>

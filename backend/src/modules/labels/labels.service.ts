@@ -89,4 +89,16 @@ export class LabelsService {
     await this.repo.clear();
     return { cleared: true };
   }
+
+  async remove(id: number) {
+    if (!Number.isFinite(id)) throw new Error('Invalid id');
+    await this.repo.delete(id);
+    return { deleted: id };
+  }
+
+  async removeMany(ids: number[]) {
+    const clean = ids.filter((id) => Number.isFinite(id));
+    if (clean.length > 0) await this.repo.delete(clean);
+    return { deleted: clean.length };
+  }
 }
