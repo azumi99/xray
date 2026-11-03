@@ -76,6 +76,9 @@ class PanelEngine {
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
   private hires: HTMLCanvasElement | null = null;
+  /** ROI area X-ray murni (rasio 0..1) — di luar ROI diberi mask hitam sebelum inferensi
+   *  supaya objek yang menempel tepi bawah (UI viewer) terdeteksi sebagai objek edge */
+  roi: { x: number; y: number; w: number; h: number } | null = null;
   private uiVideo: HTMLVideoElement | null = null;
   private listeners = new Set<() => void>();
   private snap: EngineSnapshot;
@@ -90,6 +93,31 @@ class PanelEngine {
     this.video.playsInline = true;
     this.canvas = document.createElement('canvas');
     this.snap = { running: false, kind: null, boxes: [], error: '' };
+    try {
+      const saved = localStorage.getItem(`xray-roi-${key}`);
+      if (saved) this.roi = JSON.parse(saved);
+    } catch { /* abaikan */ }
+  }
+
+  setRoi(roi: { x: number; y: number; w: number; h: number } | null) {
+    this.roi = roi;
+    try {
+      if (roi) localStorage.setItem(`xray-roi-${this.key}`, JSON.stringify(roi));
+      else localStorage.removeItem(`xray-roi-${this.key}`);
+    } catch { /* abaikan */ }
+    this.emit();
+  }
+
+  /** Mask hitam di luar ROI — efektif "crop area X-ray murni" untuk inferensi
+   *  tanpa mengubah ruang koordinat (overlay & box tetap akurat) */
+  private applyRoiMask(ctx: CanvasRenderingContext2D) {
+    const r = this.roi;
+    if (!r) return;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, FRAME_WIDTH, r.y * FRAME_HEIGHT);
+    ctx.fillRect(0, (r.y + r.h) * FRAME_HEIGHT, FRAME_WIDTH, FRAME_HEIGHT);
+    ctx.fillRect(0, r.y * FRAME_HEIGHT, r.x * FRAME_WIDTH, r.h * FRAME_HEIGHT);
+    ctx.fillRect((r.x + r.w) * FRAME_WIDTH, r.y * FRAME_HEIGHT, FRAME_WIDTH, r.h * FRAME_HEIGHT);
   }
 
   /** Frame HI-RES pada resolusi native video (maks 2560) — untuk hasil capture tajam */
@@ -278,6 +306,8 @@ class PanelEngine {
       const ctx = can.getContext('2d');
       if (!ctx) break;
       ctx.drawImage(el, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
+      // Crop area X-ray murni: luar ROI dimask hitam SEBELUM frame dikirim ke deteksi
+      this.applyRoiMask(ctx);
       // Ambil frame BERSIH (tanpa garis) sebelum overlay digambar — dipakai untuk deteksi & capture
       const cleanFrame = can.toDataURL('image/jpeg', 0.9);
       this.handlers.onFrame?.(cleanFrame);
@@ -306,13 +336,16 @@ class PanelEngine {
         // Frame simpanan diambil pada RESOLUSI NATIVE video (hi-res) — deteksi tetap
         // memakai frame 1280 yang ringan; box disimpan dalam ruang koordinat frame hi-res.
         for (const d of detected) {
-          const inside = d.x >= 2 && d.y >= 2 && d.x + d.width <= FRAME_WIDTH - 2 && d.y + d.height <= FRAME_HEIGHT - 2;
+          // Tepi bawah DIBEBASKAN (objek X-ray sering menempel dasar viewer):
+          // kelebihan di-clamp ke frame; tepi lain tetap harus di dalam.
+          const inside = d.x >= 2 && d.y >= 2 && d.x + d.width <= FRAME_WIDTH - 2 && d.y <= FRAME_HEIGHT - 2;
+          const dClamped: Box = { ...d, height: Math.min(d.height, FRAME_HEIGHT - d.y) };
           const prev = this.bestFrames.get(d.id);
-          if (inside && (!prev || d.width * d.height > prev.box.width * prev.box.height / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
+          if (inside && (!prev || dClamped.width * dClamped.height > (prev.box.width * prev.box.height) / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
             const hi = this.hiresFrame(el);
             if (hi) {
               const sf = hi.width / FRAME_WIDTH;
-              this.bestFrames.set(d.id, { frame: hi.data, box: { ...d, x: d.x * sf, y: d.y * sf, width: d.width * sf, height: d.height * sf }, scale: sf });
+              this.bestFrames.set(d.id, { frame: hi.data, box: { ...dClamped, x: dClamped.x * sf, y: dClamped.y * sf, width: dClamped.width * sf, height: dClamped.height * sf }, scale: sf });
               if (this.bestFrames.size > BEST_FRAMES_CAP) {
                 const oldest = this.bestFrames.keys().next().value;
                 if (oldest !== undefined && oldest !== d.id) this.bestFrames.delete(oldest);
@@ -418,13 +451,52 @@ function CapturePanel({
     });
   }, [snap.running]);
 
+  // Editor ROI: drag kotak di atas video untuk memilih area X-ray murni
+  const [roiEdit, setRoiEdit] = useState(false);
+  const [roiDraft, setRoiDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const ptRatio = (e: { clientX: number; clientY: number }) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)), y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)) };
+  };
+
   return (
     <View style={{ flex: 1, minWidth: 280, backgroundColor: isDark ? '#111827' : '#FFFFFF', borderWidth: 1, borderColor: isDark ? '#111827' : '#E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
       <Text style={{ color: isDark ? '#fff' : '#111827', padding: 12, fontWeight: '700' }}>
         {title} · {snap.running ? (snap.kind === 'camera' ? 'CAMERA' : 'TRACKING') : 'IDLE'}
+        {'  '}
+        <span
+          onClick={() => { setRoiEdit(!roiEdit); setRoiDraft(null); }}
+          style={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 11, fontWeight: '400', opacity: roiEdit ? 1 : 0.7 }}
+        >
+          {roiEdit ? 'drag area on video → save' : 'Set X-ray Area'}
+        </span>
+        {engine.roi && !roiEdit ? (
+          <span onClick={() => engine.setRoi(null)} style={{ cursor: 'pointer', marginLeft: 10, color: '#DC2626', fontSize: 11, fontWeight: '400' }}>· Reset</span>
+        ) : null}
+        {roiEdit && roiDraft ? (
+          <span onClick={() => { engine.setRoi(roiDraft); setRoiEdit(false); setRoiDraft(null); }} style={{ cursor: 'pointer', marginLeft: 10, color: '#16A34A', fontSize: 11, fontWeight: '700' }}>· SAVE</span>
+        ) : null}
       </Text>
-      <View style={{ aspectRatio: 16 / 9, position: 'relative', backgroundColor: '#000' }}>
+      <View
+        ref={stageRef as never}
+        style={{ aspectRatio: 16 / 9, position: 'relative', backgroundColor: '#000' }}
+        onPointerDown={roiEdit ? (e: any) => { const p = ptRatio(e); if (p) { dragRef.current = p; setRoiDraft({ x: p.x, y: p.y, w: 0, h: 0 }); } } : undefined}
+        onPointerMove={roiEdit ? (e: any) => {
+          const p = ptRatio(e); const s = dragRef.current;
+          if (p && s) setRoiDraft({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+        } : undefined}
+        onPointerUp={roiEdit ? () => { dragRef.current = null; } : undefined}
+      >
         <video ref={video} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        {roiEdit && roiDraft && roiDraft.w > 0.02 ? (
+          <View style={{ position: 'absolute', left: `${roiDraft.x * 100}%`, top: `${roiDraft.y * 100}%`, width: `${roiDraft.w * 100}%`, height: `${roiDraft.h * 100}%`, borderWidth: 2, borderColor: '#16A34A', backgroundColor: 'rgba(22, 163, 74, 0.15)' }} pointerEvents="none" />
+        ) : null}
+        {roiEdit ? (
+          <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} />
+        ) : null}
         {snap.boxes.map((b, i) => {
           // Nomor visual mengikuti urutan kanan→kiri; ID tracker tetap internal.
           const visualIndex = [...snap.boxes]
