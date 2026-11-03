@@ -260,7 +260,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const src = new cv.Mat(H, W, cv.CV_8UC1);
     for (let i = 0; i < gray.length; i++) src.data[i] = gray[i] < thByte ? 255 : 0;
     const mask = new cv.Mat();
-    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9));
+    // Kernel 5x5 (bukan 9x9): CLOSE besar menyatukan parcel yang berdampingan
+    // menjadi satu blob → tampak seperti "cuma satu objek".
+    const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
     cv.morphologyEx(src, mask, cv.MORPH_CLOSE, kernel);
     const opened = new cv.Mat();
     // kernel 3x3 (bukan 5x5): open ringan — jangan ikis tepi halus objek kabur
@@ -272,6 +274,24 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     cv.findContours(opened, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     const out: Array<Rect & { confidence: number }> = [];
     const bottomY = H * this.bottomBand;
+
+    // ---------- AUTO-ROI: batas area viewport X-ray ----------
+    // Toolbar/status bar/button viewer punya baris/kolom jauh lebih gelap dari
+    // viewport. Cari konten terang utama; blob di luar area itu = UI chrome → buang.
+    const rowMeans: number[] = [];
+    for (let yy = 0; yy < H; yy++) {
+      let s = 0;
+      for (let xx = 0; xx < W; xx++) s += gray[yy * W + xx];
+      rowMeans.push(s / W);
+    }
+    const sortedRows = [...rowMeans].sort((a, b) => a - b);
+    const rowTh = sortedRows[Math.floor(sortedRows.length * 0.25)] + 18; // baris UI ≈ kuartil bawah + margin
+    let topEdge = 0;
+    while (topEdge < H - 1 && rowMeans[topEdge] < rowTh) topEdge++;
+    let botEdge = H - 1;
+    while (botEdge > topEdge && rowMeans[botEdge] < rowTh) botEdge--;
+    // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
+    const useAutoRoi = botEdge - topEdge > H * 0.4;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
     // tepi kabur masih "lebih gelap dari background" meski lolos dari blob threshold
     const edgeTh = thByte + 0.45 * (bgLevel - thByte);
@@ -291,6 +311,14 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const area = width * height;
       if (area < this.blobMinArea || area > this.blobMaxArea) continue;
       if (width < this.blobMinW || height < this.blobMinH) continue;
+      // Buang blob di area chrome viewer (toolbar/status bar) hasil auto-ROI
+      if (useAutoRoi && (y + height * 0.7 <= topEdge || y >= botEdge)) continue;
+      if (useAutoRoi) {
+        // clamp ke area viewport supaya bagian yang menyentuh toolbar tidak melebar ke sana
+        if (y < topEdge) { height -= topEdge - y; y = topEdge; }
+        if (y + height > botEdge) height = botEdge - y;
+        if (height < this.blobMinH) continue;
+      }
       // Objek menempel dasar: JANGAN dibuang — clamp tingginya ke bottomY
       // (potong bagian yang overlap status bar) selama sisa box masih valid.
       if (y + height > bottomY) {
@@ -315,7 +343,40 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         else if (grown.x === x && grown.y === y && grown.width === width && grown.height === height) break; // berhenti bila tak tumbuh
         if (width * height > this.blobMaxArea) break;
       }
-      out.push({ x, y, width, height, confidence: 0.25 });
+      // Parcel berdampingan (dempet) = satu blob lebar. Pecah pada CELAH KOLOM
+      // nyata (kolom dengan isi objek < 12%) supaya parcel tunggal yang lebar
+      // tidak ikut terbelah.
+      const colFrac = (cx: number) => {
+        let c = 0;
+        for (let yy = y; yy < y + height; yy++) if (src.data[yy * W + cx] > 0) c++;
+        return c / Math.max(1, height);
+      };
+      const segments: Array<{ sx: number; sw: number }> = [];
+      let segStart = x;
+      let gapRun = 0;
+      for (let cx = x; cx < x + width; cx++) {
+        if (colFrac(cx) < 0.12) {
+          gapRun++;
+          if (gapRun === 4) {
+            const sw = cx - gapRun + 1 - segStart;
+            if (sw >= this.blobMinW) segments.push({ sx: segStart, sw });
+            segStart = -1;
+          }
+        } else if (gapRun >= 4 && segStart === -1) {
+          segStart = cx;
+          gapRun = 0;
+        } else {
+          gapRun = 0;
+        }
+      }
+      if (segStart === -1) segStart = x + width - 1; // trailing gap menutup segmen terakhir
+      const lastW = x + width - segStart;
+      if (lastW >= this.blobMinW) segments.push({ sx: segStart, sw: lastW });
+      if (segments.length > 1) {
+        for (const s of segments) out.push({ x: s.sx, y, width: s.sw, height, confidence: 0.25 });
+      } else {
+        out.push({ x, y, width, height, confidence: 0.25 });
+      }
     }
     src.delete();
     mask.delete();
