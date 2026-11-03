@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import Swal from 'sweetalert2';
+import { Toast, ToastDescription, ToastTitle, useToast } from '@gluestack-ui/themed';
 import { API_ORIGIN } from '@/constants/api';
 import { useThemeStore } from '@/lib/store/themeStore';
 
@@ -99,6 +99,7 @@ async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
 
 export function LabelsScreen() {
   const { theme } = useThemeStore();
+  const toast = useToast();
   const isDark = theme === 'dark';
   const [rows, setRows] = useState<LabelRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -225,15 +226,32 @@ export function LabelsScreen() {
       if (!res.ok) throw new Error(`Import failed (${res.status})`);
       const result = await res.json();
       await load();
-      await Swal.fire({
-        icon: 'success',
-        title: 'Import successful',
-        html: `<b>${result.imported ?? 0}</b> new parts inserted<br/><b>${result.updated ?? 0}</b> existing parts updated<br/><b>${result.skipped ?? 0}</b> parts skipped`,
-        confirmButtonColor: '#0284C7',
+      toast.show({
+        duration: 4000,
+        placement: 'top right',
+        render: ({ id }) => (
+          <Toast nativeID={id} variant="accent" style={{ backgroundColor: '#16A34A' }}>
+            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Import successful</ToastTitle>
+            <ToastDescription color="#F0FDF4" style={{ color: '#F0FDF4' }}>
+              {`${result.imported ?? 0} new parts inserted · ${result.updated ?? 0} updated · ${result.skipped ?? 0} skipped`}
+            </ToastDescription>
+          </Toast>
+        ),
       });
     } catch (e) {
       console.error('[Labels] import failed', e);
-      await Swal.fire({ icon: 'error', title: 'Import failed', text: e instanceof Error ? e.message : 'Could not import Excel', confirmButtonColor: '#DC2626' });
+      toast.show({
+        duration: 4000,
+        placement: 'top right',
+        render: ({ id }) => (
+          <Toast nativeID={id} variant="accent" style={{ backgroundColor: '#DC2626' }}>
+            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Import failed</ToastTitle>
+            <ToastDescription color="#FEF2F2" style={{ color: '#FEF2F2' }}>
+              {e instanceof Error ? e.message : 'Could not import Excel'}
+            </ToastDescription>
+          </Toast>
+        ),
+      });
     } finally {
       setBusy(false);
     }

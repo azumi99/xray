@@ -445,7 +445,9 @@ export class AwbService {
         const lineH = fontSize * 1.4;
         const charW = fontSize * 0.62; // monospace bold
         const maxChars = Math.max(8, Math.floor((imgW - fontSize * 1.5) / charW));
-        const lines = [`${wmParts.join('_')}_${label.toUpperCase()}`].flatMap((l) => l.match(new RegExp(`.{1,${maxChars}}`, 'g')) ?? []);
+        // Format final: MAWB_HAWB_PARTOFTOTAL_TOP/SIDE — tanpa spasi sama sekali
+        const wmText = `${wmParts.join('_')}_${label.toUpperCase()}`.replace(/\s+/g, '');
+        const lines = [wmText].flatMap((l) => l.match(new RegExp(`.{1,${maxChars}}`, 'g')) ?? []);
         const stripH = Math.max(lineH * 1.4, lines.length * lineH + fontSize * 0.5);
         const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
         const textEls = lines
@@ -458,7 +460,7 @@ export class AwbService {
         const marked = await sharp(Buffer.from(raw, 'base64'))
           .extend({ bottom: Math.ceil(stripH), background: '#000000' })
           .composite([{ input: Buffer.from(svg), top: meta.height ?? 360, left: 0 }])
-          .jpeg({ quality: 90 })
+          .jpeg({ quality: 95 })
           .toBuffer();
         await writeFile(join(process.cwd(), 'uploads', name), marked);
         // Mode hybrid (DB server + capture lokal): salin file ke uploads server agar

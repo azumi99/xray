@@ -9,7 +9,7 @@ import {
   Inter_900Black,
 } from "@expo-google-fonts/inter";
 import { config } from "@gluestack-ui/config";
-import { GluestackUIProvider } from "@gluestack-ui/themed";
+import { GluestackUIProvider, Toast } from "@gluestack-ui/themed";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -66,6 +66,7 @@ function RootLayoutNav() {
         <Stack.Screen name="detail/[id]" options={{ headerShown: false }} />
       </Stack>
       <StatusBar style={isDark ? "light" : "dark"} />
+      <Toast />
     </GluestackUIProvider>
   );
 }

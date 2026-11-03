@@ -65,7 +65,7 @@ class PanelEngine {
   private emptyCycles = 0;
   /** Frame terbaik per indeks objek (penuh di frame & area terbesar) — sumber crop capture
    *  presisi: trigger backend menyala saat objek SUDAH KELUAR kiri, jadi wajib pakai frame simpanan */
-  private bestFrames = new Map<number, { frame: string; box: Box }>();
+  private bestFrames = new Map<number, { frame: string; box: Box; scale?: number }>();
   /** Indeks yang sudah pernah di-capture — menjaga 1 objek = 1 capture walau backend trigger ulang */
   private capturedIds = new Map<number, number>();
   /** Hasil capture selesai per panel, bernomor urut objek — dipasangkan seq top ↔ seq side */
@@ -75,6 +75,7 @@ class PanelEngine {
   private handlers: { onTrigger?: (image: string, box?: Box, queueIndex?: number) => void; onFrame?: (image: string) => void } = {};
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
+  private hires: HTMLCanvasElement | null = null;
   private uiVideo: HTMLVideoElement | null = null;
   private listeners = new Set<() => void>();
   private snap: EngineSnapshot;
@@ -89,6 +90,23 @@ class PanelEngine {
     this.video.playsInline = true;
     this.canvas = document.createElement('canvas');
     this.snap = { running: false, kind: null, boxes: [], error: '' };
+  }
+
+  /** Frame HI-RES pada resolusi native video (maks 2560) — untuk hasil capture tajam */
+  private hiresFrame(el: HTMLVideoElement): { data: string; width: number } | null {
+    try {
+      const w = Math.min(el.videoWidth, 2560);
+      if (!w) return null;
+      const h = Math.round(w * (el.videoHeight / el.videoWidth));
+      if (!this.hires) this.hires = document.createElement('canvas');
+      if (this.hires.width !== w) { this.hires.width = w; this.hires.height = h; }
+      const ctx = this.hires.getContext('2d');
+      if (!ctx) return null;
+      ctx.drawImage(el, 0, 0, w, h);
+      return { data: this.hires.toDataURL('image/jpeg', 0.95), width: w };
+    } catch {
+      return null;
+    }
   }
 
   // ---------- state eksternal untuk React ----------
@@ -285,14 +303,20 @@ class PanelEngine {
         // Simpan frame terbaik per indeks: objek penuh di dalam frame & area terbesar.
         // Trigger capture datang saat objek sudah keluar sisi kiri (sudah tak terlihat),
         // sehingga crop WAJIB memakai frame simpanan ini supaya presisi.
+        // Frame simpanan diambil pada RESOLUSI NATIVE video (hi-res) — deteksi tetap
+        // memakai frame 1280 yang ringan; box disimpan dalam ruang koordinat frame hi-res.
         for (const d of detected) {
           const inside = d.x >= 2 && d.y >= 2 && d.x + d.width <= FRAME_WIDTH - 2 && d.y + d.height <= FRAME_HEIGHT - 2;
           const prev = this.bestFrames.get(d.id);
-          if (inside && (!prev || d.width * d.height > prev.box.width * prev.box.height)) {
-            this.bestFrames.set(d.id, { frame: cleanFrame, box: d });
-            if (this.bestFrames.size > BEST_FRAMES_CAP) {
-              const oldest = this.bestFrames.keys().next().value;
-              if (oldest !== undefined && oldest !== d.id) this.bestFrames.delete(oldest);
+          if (inside && (!prev || d.width * d.height > prev.box.width * prev.box.height / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
+            const hi = this.hiresFrame(el);
+            if (hi) {
+              const sf = hi.width / FRAME_WIDTH;
+              this.bestFrames.set(d.id, { frame: hi.data, box: { ...d, x: d.x * sf, y: d.y * sf, width: d.width * sf, height: d.height * sf }, scale: sf });
+              if (this.bestFrames.size > BEST_FRAMES_CAP) {
+                const oldest = this.bestFrames.keys().next().value;
+                if (oldest !== undefined && oldest !== d.id) this.bestFrames.delete(oldest);
+              }
             }
           }
         }
@@ -544,35 +568,29 @@ export function ScanCapture() {
 
   /** Crop frame ke area objek (+ margin 5%) supaya capture presisi sesuai objeknya */
   const cropToBox = (frame: string, box: Box | undefined): Promise<string> => {
-    if (!box) return Promise.resolve(frame);
+    if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const src = frame;
-      // sinkron via data URL tidak bisa — pakai canvas langsung dari koordinat frame standar
-      const margin = 0.12;
-      const x = Math.max(0, box.x - box.width * margin);
-      const y = Math.max(0, box.y - box.height * margin);
-      const w = Math.min(FRAME_WIDTH - x, box.width * (1 + margin * 2));
-      const h = Math.min(FRAME_HEIGHT - y, box.height * (1 + margin * 2));
-      const can = document.createElement('canvas');
-      can.width = Math.round(w);
-      can.height = Math.round(h);
-      const ctx = can.getContext('2d');
-      if (!ctx) return Promise.resolve(src);
-      const base = document.createElement('canvas');
-      base.width = FRAME_WIDTH;
-      base.height = FRAME_HEIGHT;
-      const bctx = base.getContext('2d');
-      if (!bctx) return Promise.resolve(src);
-      // gambarkan frame asli lalu crop — butuh decode async
+      const margin = 0.08;
+      // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
-          bctx.drawImage(img, 0, 0, FRAME_WIDTH, FRAME_HEIGHT);
-          ctx.drawImage(base, x, y, w, h, 0, 0, can.width, can.height);
-          resolve(can.toDataURL('image/jpeg', 0.9));
+          const iw = img.naturalWidth || FRAME_WIDTH;
+          const ih = img.naturalHeight || FRAME_HEIGHT;
+          const x = Math.max(0, box.x - box.width * margin);
+          const y = Math.max(0, box.y - box.height * margin);
+          const w = Math.max(1, Math.min(iw - x, box.width * (1 + margin * 2)));
+          const h = Math.max(1, Math.min(ih - y, box.height * (1 + margin * 2)));
+          const can = document.createElement('canvas');
+          can.width = Math.round(w);
+          can.height = Math.round(h);
+          const ctx = can.getContext('2d');
+          if (!ctx) { resolve(frame); return; }
+          ctx.drawImage(img, x, y, w, h, 0, 0, can.width, can.height);
+          resolve(can.toDataURL('image/jpeg', 0.95));
         };
-        img.onerror = () => resolve(src);
-        img.src = src;
+        img.onerror = () => resolve(frame);
+        img.src = frame;
       });
     } catch {
       return Promise.resolve(frame);
