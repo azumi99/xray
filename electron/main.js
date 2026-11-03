@@ -79,6 +79,50 @@ function waitBackend(tries = 60) {
   });
 }
 
+/** Serve web build via HTTP — bundle expo memakai path absolut /_expo/... yang tidak jalan di file:// */
+const WEB_PORT = 3210;
+function startWebServer() {
+  return new Promise((resolve) => {
+    const fs = require('node:fs');
+    const path = require('node:path');
+    const root = join(__dirname, IS_PACKAGED ? 'web' : '..', 'web');
+    const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg', '.json': 'application/json', '.ico': 'image/x-icon', '.woff2': 'font/woff2' };
+  const server = http.createServer((req, res) => {
+    const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0]);
+    let file = join(root, urlPath === '/' ? 'index.html' : urlPath);
+    if (!file.startsWith(root)) { res.writeHead(403).end(); return; }
+    fs.readFile(file, (err, data) => {
+      if (err) {
+        log(`HTTP 404-fallback ${req.url}`);
+        fs.readFile(join(root, 'index.html'), (e2, html) => {
+          if (e2) { res.writeHead(404).end(); return; }
+          res.writeHead(200, { 'content-type': 'text/html' }).end(html);
+        });
+        return;
+      }
+      if (urlPath !== '/') log(`HTTP 200 ${urlPath} (${data.length}B, ${types[path.extname(file)] ?? '?'})`);
+      res.writeHead(200, { 'content-type': types[path.extname(file)] ?? 'application/octet-stream' }).end(data);
+    });
+  });
+    server.on('error', (e) => { log(`web server error: ${e.message}`); resolve(false); });
+    server.listen(WEB_PORT, '127.0.0.1', () => { log(`web server ready on http://127.0.0.1:${WEB_PORT}`); resolve(true); });
+  });
+}
+
+/** Log ke file (userData/log.txt) supaya bisa dicek saat app blank di mesin user */
+function log(line) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const msg = `[${new Date().toISOString()}] ${line}\n`;
+  console.log(msg.trim());
+  try {
+    const dir = app.getPath('userData');
+    fs.appendFileSync(path.join(dir, 'log.txt'), msg);
+  } catch { /* ignore */ }
+}
+
+const showErrorPage = (title, detail) => `data:text/html,<body style="font-family:Consolas,monospace;background:#0f172a;color:#f8fafc;padding:40px"><h2 style="color:#fca5a5">${title}</h2><pre style="white-space:pre-wrap">${String(detail).replace(/[<>]/g, '')}</pre><p>Buka log: %APPDATA%\\awbxray-desktop\\log.txt</p></body>`;
+
 async function createWindow() {
   win = new BrowserWindow({
     width: 1440,
@@ -95,12 +139,38 @@ async function createWindow() {
     });
   });
   win.on('closed', () => { win = null; });
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => log(`did-fail-load ${code} ${desc} ${url}`));
+  win.webContents.on('render-process-gone', (_e, details) => log(`renderer gone: ${details.reason}`));
+  win.webContents.on('console-message', (_e, level, message) => log(`console[${level}]: ${message}`));
+
   const ok = await waitBackend();
   if (!ok) {
-    win.loadURL('data:text/html,<body style="font-family:sans-serif;padding:40px"><h2>Backend gagal start</h2><p>Periksa koneksi ke server DB (tunnel SSH) lalu jalankan ulang aplikasi.</p></body>');
+    await win.loadURL(showErrorPage('Backend gagal start', 'Periksa koneksi ke server DB (tunnel SSH) lalu jalankan ulang aplikasi.'));
     return;
   }
-  await win.loadFile(join(__dirname, IS_PACKAGED ? 'web' : '..', 'web', 'index.html'));
+  // Backend sendiri yang serve web build (backend/web-public) — tanpa static server terpisah
+  try {
+    await win.loadURL('http://127.0.0.1:3000/');
+    log('window loaded');
+    if (process.env.DIAG) {
+      setTimeout(async () => {
+        try {
+          const info = await win.webContents.executeJavaScript(`({
+            rootChildren: document.getElementById('root')?.children.length ?? -1,
+            rootHtmlLen: document.getElementById('root')?.innerHTML.length ?? -1,
+            bodyText: document.body.innerText.slice(0, 200),
+          })`);
+          log(`DIAG ${JSON.stringify(info)}`);
+        } catch (e) { log(`DIAG error ${e.message}`); }
+        app.quit();
+      }, 8000);
+    } else {
+      win.webContents.openDevTools({ mode: 'detach' });
+    }
+  } catch (e) {
+    log(`loadURL failed: ${e.message}`);
+    await win.loadURL(showErrorPage('Gagal memuat UI', e.message));
+  }
 }
 
 app.whenReady().then(() => {

@@ -27,7 +27,8 @@
       { "from": "../backend/node_modules", "to": "backend/node_modules" },
       { "from": "../backend/package.json", "to": "backend/package.json" },
       { "from": "../backend/.env", "to": "backend/.env" },
-      { "from": "../backend/models", "to": "backend/models" }
+      { "from": "../backend/models", "to": "backend/models" },
+      { "from": "../backend/web-public", "to": "backend/web-public" }
     ],
     "win": {
       "target": [{ "target": "nsis", "arch": ["x64"] }],

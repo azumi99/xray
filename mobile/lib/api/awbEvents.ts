@@ -31,7 +31,8 @@ function ensureSource() {
   source = new EventSource<'snapshot'>(EVENTS_URL, { timeout: 0, pollingInterval: 0 });
   source.addEventListener('snapshot', (event) => {
     try {
-      const payload = JSON.parse((event as { data?: string }).data ?? '{}') as AwbSnapshot;
+      const raw = JSON.parse((event as { data?: string }).data ?? '{}');
+      const payload: AwbSnapshot = Array.isArray(raw) ? { data: raw } : raw;
       listeners.forEach((l) => l(payload));
     } catch { /* snapshot invalid, abaikan */ }
   });

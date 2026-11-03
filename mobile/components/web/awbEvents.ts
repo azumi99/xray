@@ -19,15 +19,22 @@ const eventsUrl = `${API_ORIGIN}/api/awb-events`;
 
 export function subscribeAwbSnapshot(listener: Listener): () => void {
   listeners.add(listener);
-  if (!source) {
-    source = new EventSource(eventsUrl);
-    source.addEventListener('snapshot', (event) => {
-      try {
-        const payload = JSON.parse((event as MessageEvent).data) as AwbSnapshot;
-        listeners.forEach((l) => l(payload));
-      } catch { /* snapshot invalid, abaikan */ }
-    });
+  // Selalu buka koneksi baru saat ada subscriber masuk: server mengirim snapshot
+  // awal pada connect, jadi tiap navigasi ke halaman (scan/dashboard) mendapat
+  // data waiting-list segar tanpa menunggu perubahan data berikutnya.
+  if (source) {
+    source.close();
+    source = null;
   }
+  source = new EventSource(eventsUrl);
+  source.addEventListener('snapshot', (event) => {
+    try {
+      const raw = JSON.parse((event as MessageEvent).data);
+      // Snapshot bisa array langsung (format baru) atau { data: [...] } (lama)
+      const payload: AwbSnapshot = Array.isArray(raw) ? { data: raw } : raw;
+      listeners.forEach((l) => l(payload));
+    } catch { /* snapshot invalid, abaikan */ }
+  });
   return () => {
     listeners.delete(listener);
     // Tutup koneksi hanya kalau tidak ada lagi pemakai (mis. keluar dashboard)

@@ -15,3 +15,5 @@ coverage/
 electron/dist/
 electron/node_modules/
 electron/web/
+
+backend/web-public/

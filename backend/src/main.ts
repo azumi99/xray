@@ -62,6 +62,21 @@ async function bootstrap() {
     }),
   );
 
+  // Desktop (Electron): backend serve web build langsung dari backend/web-public —
+  // satu server saja (tanpa static server terpisah), fallback SPA ke index.html.
+  const webRoot = join(process.cwd(), 'web-public');
+  if (existsSync(webRoot)) {
+    const express = (await import('express')).default;
+    app.use(express.static(webRoot, { index: 'index.html', fallthrough: true }));
+    app.use((req: import('express').Request, res: import('express').Response, next: import('express').NextFunction) => {
+      if (req.method !== 'GET' || req.path.startsWith('/api') || req.path.startsWith('/graphql') || req.path.startsWith('/uploads') || req.path.startsWith('/docs')) {
+        next();
+        return;
+      }
+      res.sendFile(join(webRoot, 'index.html'));
+    });
+  }
+
   await app.listen(process.env.PORT ?? 3000);
 }
 await bootstrap();

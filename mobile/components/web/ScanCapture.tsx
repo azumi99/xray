@@ -3,7 +3,7 @@ import { useThemeStore } from '@/lib/store/themeStore';
 import { subscribeAwbSnapshot } from '@/components/web/awbEvents';
 import { API_ORIGIN } from '@/constants/api';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Text, TouchableOpacity, View } from 'react-native';
+import { Animated, Text, TouchableOpacity, View } from 'react-native';
 
 type Box = {
   id: number;
@@ -15,7 +15,17 @@ type Box = {
   confidence?: number;
   source?: 'yolo' | 'blob';
 };
-type AwbRow = { id: string; airwaybill_number: string; status?: string; created_at?: string };
+type AwbRow = {
+  id: string;
+  airwaybill_number: string;
+  hawb?: string | null;
+  status?: string;
+  created_at?: string;
+  part?: number | null;
+  colly_label?: string | null;
+  colly_total?: number | null;
+  hostawb?: { airlinesCode?: string | null; flightNo?: string | null; origin?: string | null } | null;
+};
 type SourceKind = 'screen' | 'camera';
 
 const CAPTURE = gql`
@@ -457,6 +467,24 @@ function CapturePanel({
   );
 }
 
+/**
+ * Baris waiting dengan animasi:
+ * - entering: muncul (fade + slide dari bawah)
+ * - exiting : hilang (fade + slide kiri, tint hijau = status berubah)
+ */
+function AnimatedWaitRow({ entering, exiting, children }: { entering: boolean; exiting: boolean; children: React.ReactNode }) {
+  const v = useRef(new Animated.Value(entering ? 0 : 1)).current;
+  useEffect(() => {
+    Animated.timing(v, { toValue: exiting ? 0 : 1, duration: entering || exiting ? 450 : 0, useNativeDriver: true }).start();
+  }, [entering, exiting, v]);
+  const translate = v.interpolate({ inputRange: [0, 1], outputRange: exiting ? [-60, 0] : [10, 0] });
+  return (
+    <Animated.View style={{ opacity: v, transform: [{ translateX: translate }], backgroundColor: exiting ? 'rgba(22, 163, 74, 0.12)' : 'transparent' }}>
+      {children}
+    </Animated.View>
+  );
+}
+
 export function ScanCapture() {
   const [capture] = useMutation(CAPTURE);
   const topFrame = useRef('');
@@ -466,6 +494,10 @@ export function ScanCapture() {
   const captureQueue = useRef<Array<{ image: string; box?: Box; queueIndex: number }>>([]);
   const pumping = useRef(false);
   const [waiting, setWaiting] = useState<AwbRow[]>([]);
+  /** Baris dengan animasi: entering (baru masuk) / exiting (status berubah, keluar antrean) */
+  const [rowAnim, setRowAnim] = useState<{ entering: Set<number>; exiting: Set<number> }>({ entering: new Set(), exiting: new Set() });
+  const prevWaitingRef = useRef<Set<number>>(new Set());
+  const exitTimersRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
 
@@ -473,14 +505,34 @@ export function ScanCapture() {
   useEffect(
     () =>
       subscribeAwbSnapshot((payload) => {
-        setWaiting(((payload?.data ?? []) as AwbRow[]).filter((item) => item.status === 'waiting'));
+        const rows = ((payload?.data ?? []) as AwbRow[]).filter((item) => item.status === 'waiting');
+        const nextIds = new Set(rows.map((r) => Number(r.id)));
+        const prevIds = prevWaitingRef.current;
+        const entering = new Set([...nextIds].filter((id) => !prevIds.has(id)));
+        const leaving = [...prevIds].filter((id) => !nextIds.has(id));
+        prevWaitingRef.current = nextIds;
+        // Baris keluar tetap dirender sebentar untuk animasi hilang
+        for (const id of leaving) {
+          exitTimersRef.current.get(id) && clearTimeout(exitTimersRef.current.get(id));
+        }
+        setWaiting((prev) => {
+          const kept = prev.filter((r) => nextIds.has(Number(r.id)) || leaving.includes(Number(r.id)));
+          return [...kept, ...rows.filter((r) => !kept.some((k) => Number(k.id) === Number(r.id)))];
+        });
+        setRowAnim({ entering, exiting: new Set(leaving) });
+        for (const id of leaving) {
+          exitTimersRef.current.set(id, setTimeout(() => {
+            setWaiting((prev) => prev.filter((r) => Number(r.id) !== id));
+            setRowAnim((ra) => ({ entering: ra.entering, exiting: new Set([...ra.exiting].filter((x) => x !== id)) }));
+          }, 600));
+        }
       }),
     [],
   );
 
   // Waiting list urutan ascending berdasarkan waktu (paling lama diproses lebih dulu)
   const waitingAsc = [...waiting]
-    .filter((item) => item.status === 'waiting')
+    .filter((item) => item.status === 'waiting' || rowAnim.exiting.has(Number(item.id)))
     .sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime());
 
   // Label box kedua panel = antrian AWB waiting (objek ke-N ↔ AWB ke-N)
@@ -591,16 +643,19 @@ export function ScanCapture() {
         />
       </View>
 
-      {/* Waiting List — ascending berdasarkan waktu */}
-      <View style={{ borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: 12, overflow: 'hidden', backgroundColor: isDark ? '#111827' : '#FFFFFF' }}>
+      {/* Waiting List — ascending berdasarkan waktu (gaya tabel AWB List) */}
+      <View style={{ borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', borderRadius: 16, overflow: 'hidden', backgroundColor: isDark ? '#111827' : '#FFFFFF' }}>
         <View style={{ flexDirection: 'row', backgroundColor: isDark ? '#0F1A2E' : '#F1F5F9', borderBottomWidth: 1, borderBottomColor: isDark ? '#1F2937' : '#E5E7EB', paddingHorizontal: 14, paddingVertical: 10 }}>
           {[
-            { label: 'NO', flex: 0.5 },
-            { label: 'NO. AWB', flex: 2 },
-            { label: 'WAKTU', flex: 1.5 },
-            { label: 'STATUS', flex: 0.8 },
+            { label: 'AIRLINES', flex: 1.4 },
+            { label: 'MAWB', flex: 1.6 },
+            { label: 'HAWB', flex: 1.6 },
+            { label: 'ORIGIN', flex: 1 },
+            { label: 'COLLY', flex: 1 },
+            { label: 'STATUS', flex: 1 },
+            { label: 'DATE', flex: 1.4 },
           ].map((col) => (
-            <Text key={col.label} style={{ flex: col.flex, fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, color: '#94A3B8' }}>
+            <Text key={col.label} style={{ flex: col.flex, fontSize: 10.5, fontWeight: '800', letterSpacing: 0.5, color: '#94A3B8', textAlign: 'center' }}>
               {col.label}
             </Text>
           ))}
@@ -610,30 +665,52 @@ export function ScanCapture() {
             <Text style={{ color: isDark ? '#64748B' : '#6B7280', fontSize: 12.5 }}>No AWB waiting</Text>
           </View>
         ) : (
-          waitingAsc.map((item, index) => (
+          waitingAsc.map((item, index) => {
+            const collyMatch = item.colly_label?.match(/^colly-(\d+)-of-(\d+)$/);
+            const cIdx = collyMatch ? Number(collyMatch[1]) : 0;
+            const cTotal = item.colly_total ?? (collyMatch ? Number(collyMatch[2]) : 0);
+            return (
+            <AnimatedWaitRow key={item.id} entering={rowAnim.entering.has(Number(item.id))} exiting={rowAnim.exiting.has(Number(item.id))}>
             <View
-              key={item.id}
               style={{
                 flexDirection: 'row',
                 paddingHorizontal: 14,
                 paddingVertical: 10,
+                alignItems: 'center',
                 backgroundColor: index % 2 === 1 ? (isDark ? '#0D1526' : '#F8FAFC') : 'transparent',
                 borderTopWidth: 1,
                 borderTopColor: isDark ? '#1F2937' : '#E5E7EB',
               }}
             >
-              <Text style={{ flex: 0.5, fontSize: 12.5, color: isDark ? '#64748B' : '#6B7280' }}>{index + 1}</Text>
-              <Text style={{ flex: 2, fontSize: 12.5, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827' }}>{item.airwaybill_number}</Text>
-              <Text style={{ flex: 1.5, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151' }}>
-                {item.created_at ? new Date(item.created_at).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'medium' }) : '-'}
+              <Text style={{ flex: 1.4, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>
+                {item.hostawb ? [item.hostawb.airlinesCode, item.hostawb.flightNo].filter(Boolean).join(' ') || '-' : '-'}
               </Text>
-              <View style={{ flex: 0.8, alignItems: 'flex-start' }}>
-                <View style={{ backgroundColor: 'rgba(245, 158, 11, 0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <Text style={{ flex: 1.6, fontSize: 12.5, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827', textAlign: 'center' }}>{item.airwaybill_number}</Text>
+              <Text style={{ flex: 1.6, fontSize: 12.5, fontWeight: '700', color: isDark ? '#F9FAFB' : '#111827', textAlign: 'center' }}>{item.hawb || '-'}</Text>
+              <Text style={{ flex: 1, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>{item.hostawb?.origin || '-'}</Text>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                {cTotal > 0 ? (
+                  <View style={{ alignSelf: 'center', backgroundColor: cIdx >= cTotal ? 'rgba(22, 163, 74, 0.12)' : cIdx > 0 ? 'rgba(2, 132, 199, 0.12)' : 'rgba(107, 114, 128, 0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: cIdx >= cTotal ? '#16A34A' : cIdx > 0 ? '#0369A1' : '#6B7280' }}>
+                      {item.part ?? cIdx} / {cTotal}
+                    </Text>
+                  </View>
+                ) : (
+                  <Text style={{ fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>-</Text>
+                )}
+              </View>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <View style={{ alignSelf: 'center', backgroundColor: 'rgba(245, 158, 11, 0.12)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}>
                   <Text style={{ fontSize: 10, fontWeight: '800', letterSpacing: 0.6, color: '#D97706' }}>WAITING</Text>
                 </View>
               </View>
+              <Text style={{ flex: 1.4, fontSize: 12.5, color: isDark ? '#CBD5E1' : '#374151', textAlign: 'center' }}>
+                {item.created_at ? new Date(item.created_at).toLocaleString('en-US', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }).replace(',', '') : '-'}
+              </Text>
             </View>
-          ))
+            </AnimatedWaitRow>
+            );
+          })
         )}
       </View>
     </View>

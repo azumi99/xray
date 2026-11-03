@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
+import Swal from 'sweetalert2';
 import { API_ORIGIN } from '@/constants/api';
 import { useThemeStore } from '@/lib/store/themeStore';
 
@@ -41,7 +42,7 @@ async function qrDataUrl(value: string): Promise<string | null> {
 async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
   if (rows.length === 0) return;
   // Barcode MAWB & HAWB polos; QR di kanan section HAWB memuat hawb_part_jumlah
-  const section = (title: string, bcVal: string, numText: string, rightHtml: string) => {
+  const section = (title: string, bcVal: string, numText: string, rightHtml: string, underHtml = '') => {
     const bc = barcodeDataUrl(bcVal, 26);
     return `
       <div class="sec">
@@ -50,38 +51,43 @@ async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
           <div class="sec-left">
             ${bc ? `<img class="bc" src="${bc}" />` : ''}
             <div class="sec-num">${numText}</div>
+            ${underHtml}
           </div>
           ${rightHtml}
         </div>
       </div>`;
   };
-  const partPcs = (r: LabelRow, pcs: number | null | undefined) => `<div class="pp">${partMap.get(r.id) ?? '-'}/${pcs ?? '-'}</div>`;
+  const partPcs = (r: LabelRow, pcs: number | null | undefined) => `<div class="pp">PART ${partMap.get(r.id) ?? '-'}/${pcs ?? '-'}</div>`;
   const qrRight = async (value: string) => {
     const qr = await qrDataUrl(value);
-    return qr ? `<img class="qr" src="${qr}" />` : '';
+    return qr ? `<div class="right-col"><img class="qr" src="${qr}" /></div>` : '';
   };
   const html = `<!doctype html><html><head><title>Labels ${rows.length}</title><style>
     @page { size: 100mm 50mm; margin: 0; }
     body { margin: 0; font-family: Helvetica, Arial, sans-serif; }
     .page { width: 100mm; height: 50mm; box-sizing: border-box; border: 1px solid #111; padding: 2.5mm; page-break-after: always; display: flex; flex-direction: column; }
-    .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 1.5px solid #111; padding-bottom: 1mm; }
-    .airline { font-size: 9.5pt; font-weight: 900; color: #111; }
-    .flight { font-size: 9pt; font-weight: 700; color: #111; }
-    .route { font-size: 9pt; font-weight: 700; color: #111; }
-    .sec { flex: 1; display: flex; flex-direction: column; justify-content: center; }
+    .head { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 1.5px solid #111; padding: 0 1.5px 1mm 1.5px; }
+    .head-item { flex: 1; color: #333; font-size: 6.5pt; font-weight: 400; line-height: 1.15; }
+    .head-item.center { text-align: center; } .head-item.right { text-align: right; }
+    .head-value { display: block; font-size: 7.5pt; font-weight: 400; color: #111; margin-top: 0.4mm; }
+    .sec { flex: 1; display: flex; flex-direction: column; justify-content: center; padding-left: 1.5px; }
     .sec + .sec { border-top: 1px dashed #999; }
     .sec-title { font-size: 7.5pt; font-weight: 800; color: #333; text-transform: uppercase; letter-spacing: 0.3mm; }
     .sec-row { display: flex; align-items: center; justify-content: space-between; }
-    .sec-left { flex: 1; min-width: 0; }
-    .bc { width: 72mm; max-width: 100%; height: auto; margin-top: 0.5mm; }
-    .sec-num { font-size: 10pt; font-weight: 800; color: #111; margin-top: 0.5mm; }
-    .pp { font-size: 12pt; font-weight: 900; color: #111; padding-right: 2mm; white-space: nowrap; }
+    .sec-left { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; }
+    .bc { width: 72mm; max-width: 100%; height: auto; margin: 1mm 0 0 1.5px; }
+    .sec-num { font-size: 10pt; font-weight: 800; color: #111; margin: 0.5mm 0 0 1.5px; }
+    .pp { font-size: 6.5pt; font-weight: 400; color: #333; white-space: nowrap; }
+    .pp-under { align-self: flex-end; margin-top: 0.5mm; padding-right: 1.5px; }
+    .right-col { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; padding-right: 1.5px; gap: 0.5mm; }
+    .pieces-lbl { font-size: 6.5pt; font-weight: 400; color: #333; }
+    .pieces-val { font-size: 10pt; font-weight: 700; color: #111; margin-top: 0.5mm; }
     .qr { width: 16mm; height: 16mm; }
   </style></head><body>${(await Promise.all(rows.map(async (r) => `
     <div class="page">
-      <div class="head"><span class="airline">${r.airlines_name ?? '-'}</span><span class="flight">${r.flight_no ?? ''}</span><span class="route">${r.route ?? ''}</span></div>
-      ${section('Air Waybill No:', r.mawb, r.mawb, partPcs(r, r.pcs_mawb ?? r.pcs_hawb))}
-      ${section('H. Waybill No:', r.hawb, r.hawb, await qrRight(`${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`))}
+      <div class="head"><span class="head-item">Airlines:<span class="head-value">${r.airlines_name ?? '-'}</span></span><span class="head-item center">Flight No:<span class="head-value">${r.flight_no ?? '-'}</span></span><span class="head-item right">Route:<span class="head-value">${r.route ?? '-'}</span></span></div>
+      ${section('Air Waybill No:', r.mawb, r.mawb, `<div class="right-col" style="align-self:flex-start;margin-top:-3mm"><div class="pieces-lbl">Pieces</div><div class="pieces-val">${r.pcs_hawb ?? r.pcs_mawb ?? '-'}</div></div>`)}
+      ${section('H. Waybill No:', r.hawb, r.hawb, await qrRight(`${r.hawb}_${partMap.get(r.id) ?? 1}_${r.pcs_hawb ?? r.pcs_mawb ?? 0}`), `<div class="pp pp-under">Pieces ${partMap.get(r.id) ?? '-'}/${r.pcs_hawb ?? r.pcs_mawb ?? '-'}</div>`)}
     </div>`))).join('')}</body></html>`;
   const w = window.open('', '_blank', 'width=800,height=600');
   if (!w) return;
@@ -147,9 +153,44 @@ export function LabelsScreen() {
         && (!applied.flight || (r.flight_no ?? '').toUpperCase().includes(applied.flight.toUpperCase())))
     : rows;
 
-  const lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Non-grouping: pagination per GRUP — anggota grup yang sama tidak boleh terbelah
+  // antar halaman; grup yang tidak muat sisanya dimulai di halaman berikutnya.
+  let lastPage = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  let paged: LabelRow[] = [];
+  if (!groupMode) {
+    const byGroup = new Map<string, LabelRow[]>();
+    for (const r of filtered) {
+      const key = `${r.mawb}|${r.hawb}`;
+      const arr = byGroup.get(key);
+      if (arr) arr.push(r); else byGroup.set(key, [r]);
+    }
+    const pages: LabelRow[][] = [];
+    let cur: LabelRow[] = [];
+    for (const g of byGroup.values()) {
+      if (cur.length > 0 && cur.length + g.length > PAGE_SIZE) {
+        pages.push(cur);
+        cur = [];
+      }
+      cur.push(...g);
+    }
+    if (cur.length > 0) pages.push(cur);
+    lastPage = Math.max(1, pages.length);
+    paged = pages[Math.min(page, lastPage) - 1] ?? [];
+  } else {
+    // Grouping: pagination dihitung per GRUP (header), bukan per record —
+    // breakdown anggota tidak menghabiskan kuota halaman.
+    const byGroup = new Map<string, LabelRow[]>();
+    for (const r of filtered) {
+      const key = `${r.mawb}|${r.hawb}`;
+      const arr = byGroup.get(key);
+      if (arr) arr.push(r); else byGroup.set(key, [r]);
+    }
+    const groupList = [...byGroup.values()];
+    lastPage = Math.max(1, Math.ceil(groupList.length / PAGE_SIZE));
+    const cur = Math.min(page, lastPage);
+    paged = groupList.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE).flat();
+  }
   const current = Math.min(page, lastPage);
-  const paged = filtered.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
 
   // Grup MAWB+HAWB (anggota urut id ASC = urutan part) untuk mode grouping
   const groups = new Map<string, LabelRow[]>();
@@ -181,10 +222,18 @@ export function LabelsScreen() {
       const body = new FormData();
       body.append('file', file);
       const res = await fetch(`${API_ORIGIN}/api/labels/import`, { method: 'POST', body });
-      if (!res.ok) throw new Error(`Import gagal (${res.status})`);
+      if (!res.ok) throw new Error(`Import failed (${res.status})`);
+      const result = await res.json();
       await load();
+      await Swal.fire({
+        icon: 'success',
+        title: 'Import successful',
+        html: `<b>${result.imported ?? 0}</b> new parts inserted<br/><b>${result.updated ?? 0}</b> existing parts updated<br/><b>${result.skipped ?? 0}</b> parts skipped`,
+        confirmButtonColor: '#0284C7',
+      });
     } catch (e) {
       console.error('[Labels] import failed', e);
+      await Swal.fire({ icon: 'error', title: 'Import failed', text: e instanceof Error ? e.message : 'Could not import Excel', confirmButtonColor: '#DC2626' });
     } finally {
       setBusy(false);
     }
@@ -362,7 +411,7 @@ export function LabelsScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 8, borderTopWidth: 1, borderTopColor: isDark ? '#1F2937' : '#E5E7EB', backgroundColor: isDark ? '#0F1A2E' : '#F1F5F9', gap: 12 }}>
           <Text style={{ fontSize: 11.5, color: '#94A3B8' }}>
-            Showing {paged.length} of {filtered.length} records
+            {groupMode ? `${groups.size} groups on page ${current} / ${lastPage}` : `Showing ${paged.length} of ${filtered.length} records`}
           </Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <TouchableOpacity
