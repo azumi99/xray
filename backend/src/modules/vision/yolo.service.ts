@@ -303,28 +303,43 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const bottomY = H * this.bottomBand;
 
     // ---------- AUTO-ROI: batas area viewport X-ray ----------
-    // Toolbar/status bar viewer NYARIS HITAM (< ~45% background) di tepi atas.
-    // PANEL CONTROL di bawah viewer: baris lebih gelap dari viewport SECARA
-    // KONSISTEN dari dasar frame ke atas (< viewportLevel-30). Parcel hanya
-    // menggelapkan baris lokal, bukan seluruh deretan bawah.
+    // Toolbar atas: baris nyaris hitam (< ~45% background).
+    // PANEL CONTROL bawah: batas TAJAM (drop >25 level dalam ~10 baris) DAN band
+    // di bawahnya gelap LEBAR PENUH (semua kolom) — tombol/panel viewer asli.
+    // Vignette kamera hanya gradasi halus (tanpa step tajam) → tidak terpotong;
+    // parcel hanya menggelapkan sebagian kolom → tidak dianggap panel.
     const rowMeans: number[] = [];
     for (let yy = 0; yy < H; yy++) {
       let s = 0;
       for (let xx = 0; xx < W; xx++) s += gray[yy * W + xx];
       rowMeans.push(s / W);
     }
-    const sortedRowVals = [...rowMeans].sort((a, b) => a - b);
-    const viewportLevel = sortedRowVals[Math.floor(sortedRowVals.length * 0.7)];
     const rowChromeTh = Math.max(50, bgLevel * 0.45);
-    const rowPanelTh = viewportLevel - 30;
     let topEdge = 0;
     while (topEdge < H - 1 && rowMeans[topEdge] < rowChromeTh) topEdge++;
     let botEdge = H - 1;
-    while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh) botEdge--;
-    // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun.
-    // Frame bergradasi (adaptive path) juga TANPA auto-ROI: bawahnya memang lebih
-    // gelap alami (vignette/panel menyatu) — heuristic panel justru memotong parcel.
-    const useAutoRoi = !hasStrongGradient && botEdge - topEdge > H * 0.45;
+    {
+      const refRow = rowMeans[Math.floor(H * 0.35)];
+      const bandFullWidthDark = (y: number) => {
+        let dark = 0, n = 0;
+        for (let xx = 0; xx < W; xx += Math.max(1, Math.floor(W / 32))) {
+          let s = 0;
+          for (let yy = y; yy < Math.min(H, y + 6); yy++) s += gray[yy * W + xx];
+          n += 1;
+          if (s / 6 < refRow - 25) dark += 1;
+        }
+        return dark / n >= 0.8; // ≥80% kolom gelap = band penuh lebar (panel), bukan parcel
+      };
+      for (let yy = H - 8; yy > H * 0.4; yy--) {
+        const step = rowMeans[yy - 6] - rowMeans[yy + 2];
+        if (step > 25 && bandFullWidthDark(yy + 2)) {
+          botEdge = yy;
+          break;
+        }
+      }
+    }
+    // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
+    const useAutoRoi = botEdge - topEdge > H * 0.45;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
     // tepi kabur masih "lebih gelap dari background" meski lolos dari blob threshold
     const edgeTh = thByte + 0.45 * (bgLevel - thByte);
