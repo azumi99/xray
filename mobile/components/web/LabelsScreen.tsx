@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View } from 'react-native';
 import JsBarcode from 'jsbarcode';
 import QRCode from 'qrcode';
-import { Toast, ToastDescription, ToastTitle, useToast } from '@gluestack-ui/themed';
+import { Animated } from 'react-native';
 import { API_ORIGIN } from '@/constants/api';
 import { useThemeStore } from '@/lib/store/themeStore';
 
@@ -99,7 +99,19 @@ async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
 
 export function LabelsScreen() {
   const { theme } = useThemeStore();
-  const toast = useToast();
+  // Toast lokal sederhana (tanpa provider global): banner atas muncul 3.5s
+  const toastAnim = useRef(new Animated.Value(0)).current;
+  const [toastMsg, setToastMsg] = useState<{ title: string; desc: string; ok: boolean } | null>(null);
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (title: string, desc: string, ok: boolean) => {
+    setToastMsg({ title, desc, ok });
+    toastAnim.setValue(0);
+    Animated.timing(toastAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => {
+      Animated.timing(toastAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() => setToastMsg(null));
+    }, 3500);
+  };
   const isDark = theme === 'dark';
   const [rows, setRows] = useState<LabelRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,16 +149,7 @@ export function LabelsScreen() {
       const result = await res.json();
       await load();
       setSelected((prev) => { const n = new Set(prev); ids.forEach((i) => n.delete(i)); return n; });
-      toast.show({
-        duration: 3000,
-        placement: 'top right',
-        render: ({ id }) => (
-          <Toast nativeID={id} style={{ backgroundColor: '#DC2626' }}>
-            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Deleted</ToastTitle>
-            <ToastDescription color="#FEF2F2" style={{ color: '#FEF2F2' }}>{`${result.deleted ?? ids.length} ${label} deleted`}</ToastDescription>
-          </Toast>
-        ),
-      });
+      showToast('Deleted', `${result.deleted ?? ids.length} ${label} deleted`, false);
     } catch (e) {
       console.error('[Labels] delete failed', e);
     }
@@ -253,32 +256,10 @@ export function LabelsScreen() {
       if (!res.ok) throw new Error(`Import failed (${res.status})`);
       const result = await res.json();
       await load();
-      toast.show({
-        duration: 4000,
-        placement: 'top right',
-        render: ({ id }) => (
-          <Toast nativeID={id} variant="accent" style={{ backgroundColor: '#16A34A' }}>
-            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Import successful</ToastTitle>
-            <ToastDescription color="#F0FDF4" style={{ color: '#F0FDF4' }}>
-              {`${result.imported ?? 0} new parts inserted · ${result.updated ?? 0} updated · ${result.skipped ?? 0} skipped`}
-            </ToastDescription>
-          </Toast>
-        ),
-      });
+      showToast('Import successful', `${result.imported ?? 0} new parts inserted · ${result.updated ?? 0} updated · ${result.skipped ?? 0} skipped`, true);
     } catch (e) {
       console.error('[Labels] import failed', e);
-      toast.show({
-        duration: 4000,
-        placement: 'top right',
-        render: ({ id }) => (
-          <Toast nativeID={id} variant="accent" style={{ backgroundColor: '#DC2626' }}>
-            <ToastTitle color="#FFFFFF" style={{ color: '#FFFFFF' }}>Import failed</ToastTitle>
-            <ToastDescription color="#FEF2F2" style={{ color: '#FEF2F2' }}>
-              {e instanceof Error ? e.message : 'Could not import Excel'}
-            </ToastDescription>
-          </Toast>
-        ),
-      });
+      showToast('Import failed', e instanceof Error ? e.message : 'Could not import Excel', false);
     } finally {
       setBusy(false);
     }
@@ -488,6 +469,23 @@ export function LabelsScreen() {
           </View>
         </View>
       </View>
+
+      {toastMsg ? (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute', top: 12, right: 12, maxWidth: 360,
+            opacity: toastAnim,
+            transform: [{ translateY: toastAnim.interpolate({ inputRange: [0, 1], outputRange: [-12, 0] }) }],
+            backgroundColor: toastMsg.ok ? '#16A34A' : '#DC2626',
+            borderRadius: 12, padding: 12, gap: 2,
+            shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 8, elevation: 4,
+          }}
+        >
+          <Text style={{ color: '#FFFFFF', fontWeight: '800', fontSize: 13 }}>{toastMsg.title}</Text>
+          <Text style={{ color: toastMsg.ok ? '#F0FDF4' : '#FEF2F2', fontSize: 12 }}>{toastMsg.desc}</Text>
+        </Animated.View>
+      ) : null}
 
     </View>
   );

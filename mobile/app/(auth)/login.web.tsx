@@ -2,7 +2,7 @@ import { login as apiLogin } from '@/lib/api/authAPI';
 import { useAuth } from '@/lib/store/auth';
 import { useThemeStore } from '@/lib/store/themeStore';
 import { useBreakpoint } from '@/components/web/useBreakpoint';
-import { ScanLineIcon, ShieldCheckIcon, EyeIcon, EyeOffIcon, PackageIcon, CameraIcon } from 'lucide-react-native';
+import { ScanLineIcon, EyeIcon, EyeOffIcon } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
@@ -39,7 +39,7 @@ export default function LoginWebScreen() {
         throw new Error('Format respons login tidak valid');
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message.replace('ApolloError: ', '') : 'Terjadi kesalahan saat login');
+      setError(e instanceof Error ? e.message.replace('ApolloError: ', '') : 'An error occurred during sign in');
     } finally {
       setIsLoading(false);
     }
@@ -76,27 +76,9 @@ export default function LoginWebScreen() {
           <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFFFFF', letterSpacing: 1 }}>AWB X-Ray</Text>
         </View>
 
-        <Text style={{ fontSize: 40, fontWeight: '800', color: '#FFFFFF', lineHeight: 48, marginBottom: 16 }}>
-          Dashboard pengelolaan{'\n'}airwaybill Anda
+        <Text style={{ fontSize: 40, fontWeight: '800', color: '#FFFFFF', lineHeight: 48 }}>
+          X-Ray Cargo{'\n'}Management
         </Text>
-        <Text style={{ fontSize: 15, color: 'rgba(255,255,255,0.75)', lineHeight: 24, marginBottom: 40, maxWidth: 460 }}>
-          Scan label pengiriman, hasil OCR otomatis via AI, dan kelola seluruh data AWB dalam satu tempat.
-        </Text>
-
-        <View style={{ gap: 18 }}>
-          {[
-            { icon: <CameraIcon size={18} color="#93C5FD" />, text: 'OCR label dengan AI qwen3-vl' },
-            { icon: <PackageIcon size={18} color="#93C5FD" />, text: 'Riwayat AWB & foto X-ray terpusat' },
-            { icon: <ShieldCheckIcon size={18} color="#93C5FD" />, text: 'Autentikasi aman berbasis JWT' },
-          ].map((item, i) => (
-            <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-              <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' }}>
-                {item.icon}
-              </View>
-              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14 }}>{item.text}</Text>
-            </View>
-          ))}
-        </View>
       </LinearGradient>
       )}
 
@@ -113,8 +95,8 @@ export default function LoginWebScreen() {
           gap: 18,
         }}>
           <View>
-            <Text style={{ fontSize: 24, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827' }}>Masuk</Text>
-            <Text style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>Silakan login untuk melanjutkan ke dashboard</Text>
+            <Text style={{ fontSize: 24, fontWeight: '800', color: isDark ? '#F9FAFB' : '#111827' }}>Sign In</Text>
+            <Text style={{ fontSize: 13, color: '#9CA3AF', marginTop: 4 }}>Log in to continue to the dashboard</Text>
           </View>
 
           <View style={{ gap: 6 }}>
@@ -185,13 +167,13 @@ export default function LoginWebScreen() {
           >
             {isLoading ? <ActivityIndicator color="#FFFFFF" /> : null}
             <Text style={{ color: '#FFFFFF', fontSize: 14.5, fontWeight: '700' }}>
-              {isLoading ? 'Memproses...' : 'Masuk ke Dashboard'}
+              {isLoading ? 'Processing...' : 'Sign In to Dashboard'}
             </Text>
           </TouchableOpacity>
 
           <View style={{ paddingTop: 8, borderTopWidth: 1, borderTopColor: isDark ? '#1F2937' : '#F3F4F6' }}>
             <Text style={{ fontSize: 11.5, color: '#9CA3AF', textAlign: 'center' }}>
-              Akun demo: demo@awbxray.com / password
+              Demo account: demo@awbxray.com / password
             </Text>
           </View>
         </View>
