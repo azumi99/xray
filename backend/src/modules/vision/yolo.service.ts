@@ -320,28 +320,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     let topEdge = 0;
     while (topEdge < H - 1 && rowMeans[topEdge] < rowChromeTh) topEdge++;
     let botEdge = H - 1;
-    // Guard: baris panel harus gelap LEBAR PENUH (≥80% kolom) — baris yang
-    // gelap karena parcel (sebagian kolom) tidak dianggap panel.
-    const fullWidthDark = (y: number) => {
-      let dark = 0, n = 0;
-      for (let xx = 0; xx < W; xx += Math.max(1, Math.floor(W / 32))) {
-        n += 1;
-        if (gray[y * W + xx] < rowPanelTh) dark += 1;
-      }
-      return dark / n >= 0.8;
-    };
-    while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh && fullWidthDark(botEdge)) botEdge--;
-    // Bar control asli sering berbatas GRADUAL (bukan step tajam). Pembeda yang
-    // valid: bar control SERAGAM secara horizontal (bar abu polos + tombol kecil,
-    // deviasi antar kolom rendah). Baris parcel pasti bervariasi (gelap di tengah,
-    // terang di sisi) → deviasi tinggi → tidak dianggap panel.
-    if (botEdge < H - 1) {
-      const cols: number[] = [];
-      for (let xx = 0; xx < W; xx += Math.max(1, Math.floor(W / 32))) cols.push(gray[Math.min(H - 1, botEdge + 4) * W + xx]);
-      const m = cols.reduce((a, b) => a + b, 0) / cols.length;
-      const dev = cols.reduce((a, b) => a + Math.abs(b - m), 0) / cols.length;
-      if (dev >= 22) botEdge = H - 1; // bervariasi = ada objek/parcel → jangan potong
-    }
+    while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh) botEdge--;
     // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
     const useAutoRoi = botEdge - topEdge > H * 0.45;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
@@ -462,16 +441,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const sorted = [...items].sort((a, b) => b.confidence - a.confidence);
     const keep: typeof sorted = [];
     for (const item of sorted) {
-      // Duplikat "1 objek 2 box": IoU rendah saja tidak cukup — cek containment
-      // DUA ARAH (item di dalam kept, ATAU kept di dalam item yang lebih besar).
-      let dup = false;
-      for (let ki = 0; ki < keep.length && !dup; ki++) {
-        const k = keep[ki];
-        if (this.iou(k, item) >= this.iouNms) dup = true;
-        else if (this.containment(k, item) >= 0.5) dup = true;
-        else if (this.containment(item, k) >= 0.5) keep.splice(ki--, 1); // kept lebih kecil → ganti item
-      }
-      if (!dup) keep.push(item);
+      // merge jika: IoU tinggi ATAU box contained >= 50% di dalam box yang sudah keep
+      // (YOLO setengah objek + blob penuh sering IoU-nya rendah tapi saling contain)
+      if (keep.some((k) => this.iou(k, item) >= this.iouNms || this.containment(k, item) >= 0.5)) continue;
+      keep.push(item);
     }
     return keep;
   }
@@ -504,15 +477,14 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private stableBox(obj: TrackedObject): Rect {
     const h = obj.history;
     if (h.length === 0) return obj.box;
-    // Rata-rata berbobot: frame terbaru bobot tertinggi → box halus mengikuti
-    // objek bergerak tanpa "meloncat" antar frame.
-    let ws = 0, wx = 0, wy = 0, ww = 0, wh = 0;
-    for (let i = 0; i < h.length; i++) {
-      const w = i + 1; // frame akhir (terbaru) bobot terbesar
-      ws += w; wx += h[i].x * w; wy += h[i].y * w; ww += h[i].width * w; wh += h[i].height * w;
-    }
+    const ema = h.reduce((acc, b, i) => ({
+      x: (acc.x * i + b.x) / (i + 1),
+      y: (acc.y * i + b.y) / (i + 1),
+      width: (acc.width * i + b.width) / (i + 1),
+      height: (acc.height * i + b.height) / (i + 1),
+    }), { x: 0, y: 0, width: 0, height: 0 });
     // kompensasi 1 frame ke depan sesuai kecepatan → box tidak tertinggal di belakang objek
-    return { x: wx / ws + obj.vx, y: wy / ws, width: ww / ws, height: wh / ws };
+    return { x: ema.x + obj.vx, y: ema.y, width: ema.width, height: ema.height };
   }
 
   /** Tracking IoU lintas frame — capture sekali saat paket baru dari kiri sudah full terlihat. */
@@ -557,7 +529,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         obj.seen += 1;
         obj.confidence = box.confidence;
         obj.source = box.source;
-        obj.history = [...obj.history, { x: bx, y: by, width: bw, height: bh }].slice(-5);
+        obj.history = [...obj.history, { x: bx, y: by, width: bw, height: bh }].slice(-3);
       }
       // box output = EMA + kompensasi velocity (tidak telat saat objek bergerak)
       const stable = this.stableBox(obj);
