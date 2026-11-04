@@ -441,10 +441,24 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const sorted = [...items].sort((a, b) => b.confidence - a.confidence);
     const keep: typeof sorted = [];
     for (const item of sorted) {
-      // merge jika: IoU tinggi ATAU box contained >= 50% di dalam box yang sudah keep
-      // (YOLO setengah objek + blob penuh sering IoU-nya rendah tapi saling contain)
-      if (keep.some((k) => this.iou(k, item) >= this.iouNms || this.containment(k, item) >= 0.5)) continue;
-      keep.push(item);
+      // 1 objek = 1 box. Duplikat umum: IoU rendah karena box saling lepas
+      // (YOLO setengah atas + blob setengah bawah). Tiga cek duplikat:
+      // 1) IoU tinggi, 2) containment DUA ARAH (≥50% saling menampung),
+      // 3) pusat box berdekatan (< 55% diagonal box terkecil) = objek sama.
+      let dup = false;
+      for (let ki = 0; ki < keep.length && !dup; ki++) {
+        const k = keep[ki];
+        if (this.iou(k, item) >= this.iouNms) dup = true;
+        else if (this.containment(k, item) >= 0.5) dup = true;
+        else if (this.containment(item, k) >= 0.5) keep.splice(ki--, 1); // kept lebih kecil → ganti
+        else {
+          const cdx = (k.x + k.width / 2) - (item.x + item.width / 2);
+          const cdy = (k.y + k.height / 2) - (item.y + item.height / 2);
+          const diag = Math.sqrt(item.width ** 2 + item.height ** 2);
+          if (Math.sqrt(cdx * cdx + cdy * cdy) < diag * 0.55) dup = true;
+        }
+      }
+      if (!dup) keep.push(item);
     }
     return keep;
   }
