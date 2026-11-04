@@ -331,11 +331,16 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       return dark / n >= 0.8;
     };
     while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh && fullWidthDark(botEdge)) botEdge--;
-    // Panel asli punya STEP TAJAM di batas atasnya; vignette hanya gradasi
-    // halus → tanpa step, jangan potong (botEdge kembali ke dasar frame).
+    // Bar control asli sering berbatas GRADUAL (bukan step tajam). Pembeda yang
+    // valid: bar control SERAGAM secara horizontal (bar abu polos + tombol kecil,
+    // deviasi antar kolom rendah). Baris parcel pasti bervariasi (gelap di tengah,
+    // terang di sisi) → deviasi tinggi → tidak dianggap panel.
     if (botEdge < H - 1) {
-      const ref = rowMeans[Math.max(topEdge, botEdge - 10)];
-      if (ref - rowMeans[botEdge] < 15) botEdge = H - 1;
+      const cols: number[] = [];
+      for (let xx = 0; xx < W; xx += Math.max(1, Math.floor(W / 32))) cols.push(gray[Math.min(H - 1, botEdge + 4) * W + xx]);
+      const m = cols.reduce((a, b) => a + b, 0) / cols.length;
+      const dev = cols.reduce((a, b) => a + Math.abs(b - m), 0) / cols.length;
+      if (dev >= 22) botEdge = H - 1; // bervariasi = ada objek/parcel → jangan potong
     }
     // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
     const useAutoRoi = botEdge - topEdge > H * 0.45;
