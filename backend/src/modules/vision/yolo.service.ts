@@ -259,11 +259,38 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
 
     const src = new cv.Mat(H, W, cv.CV_8UC1);
     for (let i = 0; i < gray.length; i++) src.data[i] = gray[i] < thByte ? 255 : 0;
+
+    // Kamera fisik sering punya vignette/gradasi kuat (atas terang, bawah gelap).
+    // Global threshold akan membuat seluruh bawah jadi blob raksasa. Saat gradien
+    // >30 level, pakai LOCAL CONTRAST: background blur - pixel → parcel gelap lokal.
+    const bandMean = (y0: number, y1: number) => {
+      let s = 0, n = 0;
+      for (let yy = y0; yy < y1; yy++) for (let xx = 0; xx < W; xx++) { s += gray[yy * W + xx]; n++; }
+      return s / Math.max(1, n);
+    };
+    const topBand = bandMean(Math.floor(H * 0.08), Math.floor(H * 0.25));
+    const bottomBand = bandMean(Math.floor(H * 0.7), Math.floor(H * 0.92));
+    const hasStrongGradient = Math.abs(topBand - bottomBand) > 30;
+    let detectSrc = src;
+    const adaptiveMats: any[] = [];
+    if (hasStrongGradient) {
+      const gmat = new cv.Mat(H, W, cv.CV_8UC1);
+      for (let i = 0; i < gray.length; i++) gmat.data[i] = Math.max(0, Math.min(255, Math.round(gray[i])));
+      const bg = new cv.Mat();
+      const diff = new cv.Mat();
+      const adaptive = new cv.Mat();
+      cv.GaussianBlur(gmat, bg, new cv.Size(121, 121), 0, 0, cv.BORDER_DEFAULT);
+      cv.subtract(bg, gmat, diff); // dark parcel → nilai positif
+      cv.threshold(diff, adaptive, Number(process.env.BLOB_LOCAL_CONTRAST ?? 8), 255, cv.THRESH_BINARY);
+      detectSrc = adaptive;
+      adaptiveMats.push(gmat, bg, diff, adaptive);
+    }
+
     const mask = new cv.Mat();
     // Kernel 5x5 (bukan 9x9): CLOSE besar menyatukan parcel yang berdampingan
     // menjadi satu blob → tampak seperti "cuma satu objek".
     const kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(5, 5));
-    cv.morphologyEx(src, mask, cv.MORPH_CLOSE, kernel);
+    cv.morphologyEx(detectSrc, mask, cv.MORPH_CLOSE, kernel);
     const opened = new cv.Mat();
     // kernel 3x3 (bukan 5x5): open ringan — jangan ikis tepi halus objek kabur
     const kernel2 = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(3, 3));
@@ -276,22 +303,26 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const bottomY = H * this.bottomBand;
 
     // ---------- AUTO-ROI: batas area viewport X-ray ----------
-    // Toolbar/status bar/button viewer punya baris/kolom jauh lebih gelap dari
-    // viewport. Cari konten terang utama; blob di luar area itu = UI chrome → buang.
+    // Toolbar/status bar viewer NYARIS HITAM (< ~45% background) di tepi atas.
+    // PANEL CONTROL di bawah viewer: baris lebih gelap dari viewport SECARA
+    // KONSISTEN dari dasar frame ke atas (< viewportLevel-30). Parcel hanya
+    // menggelapkan baris lokal, bukan seluruh deretan bawah.
     const rowMeans: number[] = [];
     for (let yy = 0; yy < H; yy++) {
       let s = 0;
       for (let xx = 0; xx < W; xx++) s += gray[yy * W + xx];
       rowMeans.push(s / W);
     }
-    const sortedRows = [...rowMeans].sort((a, b) => a - b);
-    const rowTh = sortedRows[Math.floor(sortedRows.length * 0.25)] + 18; // baris UI ≈ kuartil bawah + margin
+    const sortedRowVals = [...rowMeans].sort((a, b) => a - b);
+    const viewportLevel = sortedRowVals[Math.floor(sortedRowVals.length * 0.7)];
+    const rowChromeTh = Math.max(50, bgLevel * 0.45);
+    const rowPanelTh = viewportLevel - 30;
     let topEdge = 0;
-    while (topEdge < H - 1 && rowMeans[topEdge] < rowTh) topEdge++;
+    while (topEdge < H - 1 && rowMeans[topEdge] < rowChromeTh) topEdge++;
     let botEdge = H - 1;
-    while (botEdge > topEdge && rowMeans[botEdge] < rowTh) botEdge--;
+    while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh) botEdge--;
     // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
-    const useAutoRoi = botEdge - topEdge > H * 0.4;
+    const useAutoRoi = botEdge - topEdge > H * 0.45;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
     // tepi kabur masih "lebih gelap dari background" meski lolos dari blob threshold
     const edgeTh = thByte + 0.45 * (bgLevel - thByte);
@@ -395,6 +426,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       }
     }
     src.delete();
+    for (const mat of adaptiveMats) mat.delete();
     mask.delete();
     opened.delete();
     kernel.delete();

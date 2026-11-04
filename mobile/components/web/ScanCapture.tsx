@@ -487,16 +487,52 @@ function CapturePanel({
     });
   }, [snap.running]);
 
+  // Editor ROI: tandai area X-ray murni — luar area di-mask (panel kontrol terkecuali)
+  const [roiEdit, setRoiEdit] = useState(false);
+  const [roiDraft, setRoiDraft] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const [roiActive, setRoiActive] = useState(!!engine.roi);
+  const dragRef = useRef<{ x: number; y: number } | null>(null);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const ptRatio = (e: { clientX: number; clientY: number }) => {
+    const rect = stageRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    return { x: Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width)), y: Math.min(1, Math.max(0, (e.clientY - rect.top) / rect.height)) };
+  };
+
   return (
     <View style={{ flex: 1, minWidth: 280, backgroundColor: isDark ? '#111827' : '#FFFFFF', borderWidth: 1, borderColor: isDark ? '#111827' : '#E5E7EB', borderRadius: 12, overflow: 'hidden' }}>
       <Text style={{ color: isDark ? '#fff' : '#111827', padding: 12, fontWeight: '700' }}>
         {title} · {snap.running ? (snap.kind === 'camera' ? 'CAMERA' : 'TRACKING') : 'IDLE'}
         {snap.error ? <span style={{ color: '#F59E0B', fontSize: 11, fontWeight: '400' }}> · {snap.error}</span> : null}
+        {'  '}
+        <span
+          onClick={() => { setRoiEdit(!roiEdit); setRoiDraft(null); }}
+          style={{ cursor: 'pointer', textDecoration: 'underline', fontSize: 11, fontWeight: '400', opacity: roiEdit ? 1 : 0.7 }}
+        >
+          {roiEdit ? 'drag area on video → Save' : 'Set X-ray Area'}
+        </span>
+        {roiActive && !roiEdit ? (
+          <span onClick={() => { engine.setRoi(null); setRoiActive(false); }} style={{ cursor: 'pointer', marginLeft: 10, color: '#DC2626', fontSize: 11, fontWeight: '400' }}>· Reset</span>
+        ) : null}
+        {roiEdit && roiDraft && roiDraft.w > 0.02 ? (
+          <span onClick={() => { engine.setRoi(roiDraft); setRoiActive(true); setRoiEdit(false); setRoiDraft(null); }} style={{ cursor: 'pointer', marginLeft: 10, color: '#16A34A', fontSize: 11, fontWeight: '700' }}>· SAVE</span>
+        ) : null}
       </Text>
       <View
+        ref={stageRef as never}
         style={{ aspectRatio: 16 / 9, position: 'relative', backgroundColor: '#000' }}
+        onPointerDown={roiEdit ? (e: any) => { const p = ptRatio(e); if (p) { dragRef.current = p; setRoiDraft({ x: p.x, y: p.y, w: 0, h: 0 }); } } : undefined}
+        onPointerMove={roiEdit ? (e: any) => {
+          const p = ptRatio(e); const s = dragRef.current;
+          if (p && s) setRoiDraft({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+        } : undefined}
+        onPointerUp={roiEdit ? () => { dragRef.current = null; } : undefined}
       >
         <video ref={video} muted playsInline style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        {roiEdit && roiDraft && roiDraft.w > 0.02 ? (
+          <View style={{ position: 'absolute', left: `${roiDraft.x * 100}%`, top: `${roiDraft.y * 100}%`, width: `${roiDraft.w * 100}%`, height: `${roiDraft.h * 100}%`, borderWidth: 2, borderColor: '#16A34A', backgroundColor: 'rgba(22, 163, 74, 0.15)' }} pointerEvents="none" />
+        ) : null}
+        {roiEdit ? <View style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }} /> : null}
         {snap.boxes.map((b, i) => {
           // Nomor visual mengikuti urutan kanan→kiri; ID tracker tetap internal.
           const visualIndex = [...snap.boxes]
