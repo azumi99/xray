@@ -321,8 +321,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     while (topEdge < H - 1 && rowMeans[topEdge] < rowChromeTh) topEdge++;
     let botEdge = H - 1;
     while (botEdge > topEdge && rowMeans[botEdge] < rowPanelTh) botEdge--;
-    // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun
-    const useAutoRoi = botEdge - topEdge > H * 0.45;
+    // area konten terlalu sempit (frame gelap/aneh) → jangan memotong apa pun.
+    // Frame bergradasi (adaptive path) juga TANPA auto-ROI: bawahnya memang lebih
+    // gelap alami (vignette/panel menyatu) — heuristic panel justru memotong parcel.
+    const useAutoRoi = !hasStrongGradient && botEdge - topEdge > H * 0.45;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
     // tepi kabur masih "lebih gelap dari background" meski lolos dari blob threshold
     const edgeTh = thByte + 0.45 * (bgLevel - thByte);
