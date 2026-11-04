@@ -72,6 +72,8 @@ class PanelEngine {
   private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number }> = [];
   /** Urutan trigger sesi ini — objek ke-N yang selesai ↔ AWB waiting ke-N (id ASC), bukan id tracker */
   private triggerSeq = 0;
+  /** Guard pipelined: hanya satu POST detect in-flight */
+  private inflight = false;
   private handlers: { onTrigger?: (image: string, box?: Box, queueIndex?: number) => void; onFrame?: (image: string) => void } = {};
   private video: HTMLVideoElement;
   private canvas: HTMLCanvasElement;
@@ -347,74 +349,75 @@ class PanelEngine {
       // Ambil frame BERSIH (tanpa garis) sebelum overlay digambar — dipakai untuk deteksi & capture
       const cleanFrame = can.toDataURL('image/jpeg', 0.9);
       this.handlers.onFrame?.(cleanFrame);
-      try {
-        const response = await fetch(VISION_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ source: this.key, imageBase64: cleanFrame }),
-        });
-        const result = await response.json();
-        // Engine aktif: YOLO (utama) / OpenCV (fallback) — key `detections` selalu diisi
-        // Koordinat backend 640x360 → skala ke frame 1280x720
-        const detected: Box[] = ((result?.detections ?? result?.yolo ?? result?.opencv ?? []) as Box[])
-          .map((b) => ({ ...b, x: b.x * BOX_SCALE, y: b.y * BOX_SCALE, width: b.width * BOX_SCALE, height: b.height * BOX_SCALE }));
-        // Anti kedip: box dipertahankan beberapa cycle saat deteksi kosong sesaat
-        if (detected.length > 0) {
-          this.emptyCycles = 0;
-          this.boxes = detected;
-        } else {
-          this.emptyCycles += 1;
-          if (this.emptyCycles >= 4) this.boxes = [];
-        }
-        // Simpan frame terbaik per indeks: objek penuh di dalam frame & area terbesar.
-        // Trigger capture datang saat objek sudah keluar sisi kiri (sudah tak terlihat),
-        // sehingga crop WAJIB memakai frame simpanan ini supaya presisi.
-        // Frame simpanan diambil pada RESOLUSI NATIVE video (hi-res) — deteksi tetap
-        // memakai frame 1280 yang ringan; box disimpan dalam ruang koordinat frame hi-res.
-        for (const d of detected) {
-          // Tepi bawah DIBEBASKAN (objek X-ray sering menempel dasar viewer):
-          // kelebihan di-clamp ke frame; tepi lain tetap harus di dalam.
-          const inside = d.x >= 2 && d.y >= 2 && d.x + d.width <= FRAME_WIDTH - 2 && d.y <= FRAME_HEIGHT - 2;
-          const dClamped: Box = { ...d, height: Math.min(d.height, FRAME_HEIGHT - d.y) };
-          const prev = this.bestFrames.get(d.id);
-          if (inside && (!prev || dClamped.width * dClamped.height > (prev.box.width * prev.box.height) / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
-            const hi = this.hiresFrame(el);
-            if (hi) {
-              const sf = hi.width / FRAME_WIDTH;
-              this.bestFrames.set(d.id, { frame: hi.data, box: { ...dClamped, x: dClamped.x * sf, y: dClamped.y * sf, width: dClamped.width * sf, height: dClamped.height * sf }, scale: sf });
-              if (this.bestFrames.size > BEST_FRAMES_CAP) {
-                const oldest = this.bestFrames.keys().next().value;
-                if (oldest !== undefined && oldest !== d.id) this.bestFrames.delete(oldest);
+      // PIPELINED: kirim tanpa menunggu respons siklus sebelumnya (guard anti tumpuk)
+      // supaya deteksi tetap responsif meski RTT/latensi server besar.
+      if (!this.inflight) {
+        this.inflight = true;
+        const payload = cleanFrame;
+        void (async () => {
+          try {
+            const response = await fetch(VISION_URL, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ source: this.key, imageBase64: payload }),
+            });
+            const result = await response.json();
+            // Engine aktif: YOLO (utama) / OpenCV (fallback) — key `detections` selalu diisi
+            // Koordinat backend 640x360 → skala ke frame 1280x720
+            const detected: Box[] = ((result?.detections ?? result?.yolo ?? result?.opencv ?? []) as Box[])
+              .map((b) => ({ ...b, x: b.x * BOX_SCALE, y: b.y * BOX_SCALE, width: b.width * BOX_SCALE, height: b.height * BOX_SCALE }));
+            // Anti kedip: box dipertahankan beberapa cycle saat deteksi kosong sesaat
+            if (detected.length > 0) {
+              this.emptyCycles = 0;
+              this.boxes = detected;
+            } else {
+              this.emptyCycles += 1;
+              if (this.emptyCycles >= 4) this.boxes = [];
+            }
+            // Simpan frame terbaik per indeks: objek penuh di dalam frame & area terbesar.
+            for (const d of detected) {
+              const inside = d.x >= 2 && d.y >= 2 && d.x + d.width <= FRAME_WIDTH - 2 && d.y <= FRAME_HEIGHT - 2;
+              const dClamped: Box = { ...d, height: Math.min(d.height, FRAME_HEIGHT - d.y) };
+              const prev = this.bestFrames.get(d.id);
+              if (inside && (!prev || dClamped.width * dClamped.height > (prev.box.width * prev.box.height) / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
+                const hi = this.hiresFrame(this.video);
+                if (hi) {
+                  const sf = hi.width / FRAME_WIDTH;
+                  this.bestFrames.set(d.id, { frame: hi.data, box: { ...dClamped, x: dClamped.x * sf, y: dClamped.y * sf, width: dClamped.width * sf, height: dClamped.height * sf }, scale: sf });
+                  if (this.bestFrames.size > BEST_FRAMES_CAP) {
+                    const oldest = this.bestFrames.keys().next().value;
+                    if (oldest !== undefined && oldest !== d.id) this.bestFrames.delete(oldest);
+                  }
+                }
               }
             }
+            const now = Date.now();
+            for (const [id, at] of this.capturedIds) {
+              if (now - at > CAPTURED_ID_TTL_MS) this.capturedIds.delete(id);
+            }
+            const triggered = detected
+              .filter((b) => b.trigger)
+              .sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2));
+            for (const trig of triggered) {
+              if (this.capturedIds.has(trig.id)) continue;
+              this.capturedIds.set(trig.id, now);
+              const best = this.bestFrames.get(trig.id);
+              this.bestFrames.delete(trig.id);
+              const seq = this.triggerSeq++;
+              this.completedQueue.push({ frame: best?.frame ?? payload, box: best?.box ?? trig, ts: now, seq });
+              if (this.completedQueue.length > 32) this.completedQueue.shift();
+              this.handlers.onTrigger?.(best?.frame ?? payload, best?.box ?? trig, seq);
+            }
+          } catch {
+            this.emptyCycles += 1;
+            if (this.emptyCycles >= 4) this.boxes = [];
+          } finally {
+            this.inflight = false;
           }
-        }
-        const now = Date.now();
-        for (const [id, at] of this.capturedIds) {
-          if (now - at > CAPTURED_ID_TTL_MS) this.capturedIds.delete(id);
-        }
-        // Urutan antrian mengikuti posisi visual: objek paling KANAN = indeks pertama.
-        // ID tracking tetap dipakai untuk deduplikasi, bukan untuk menentukan urutan AWB.
-        const triggered = detected
-          .filter((b) => b.trigger)
-          .sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2));
-        for (const trig of triggered) {
-          // Indeks unik menjaga 1 objek = 1 capture: indeks yang sudah pernah di-capture dilewati
-          if (this.capturedIds.has(trig.id)) continue;
-          this.capturedIds.set(trig.id, now);
-          const best = this.bestFrames.get(trig.id);
-          this.bestFrames.delete(trig.id);
-          const seq = this.triggerSeq++;
-          this.completedQueue.push({ frame: best?.frame ?? cleanFrame, box: best?.box ?? trig, ts: now, seq });
-          if (this.completedQueue.length > 32) this.completedQueue.shift();
-          // queueIndex = urutan selesai (FIFO): objek pertama yang keluar ↔ AWB waiting pertama
-          this.handlers.onTrigger?.(best?.frame ?? cleanFrame, best?.box ?? trig, seq);
-        }
-      } catch {
-        this.emptyCycles += 1;
-        if (this.emptyCycles >= 4) this.boxes = [];
+        })();
       }
       this.emit();
+      await new Promise((r) => setTimeout(r, DETECT_INTERVAL_MS));
     }
   }
 }
