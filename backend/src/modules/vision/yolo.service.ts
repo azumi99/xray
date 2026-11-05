@@ -433,10 +433,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     kernel2.delete();
     contours.delete();
     hierarchy.delete();
-    // MERGE blob bersebelahan (anti flicker): belahan internal satu parcel sering
-    // jadi 2 KONTUR terpisah (jembatan morf kadang putus) → kelap-kelip 1/2 box.
-    // Dua blob dengan celah horizontal tipis (< min(24, 25% tinggi)) + overlap
-    // vertikal ≥60% = satu objek → digabung. Dua parcel asli dipisah belt (celah lebar).
+    // MERGE blob bersebelahan (anti flicker): HANYA belahan sebanding dari satu
+    // parcel — celah tipis (<14px), overlap vertikal ≥60%, DAN tinggi kedua box
+    // sebanding (0.6–1.6×) agar sidebar/chrome full-height tidak menyatu dengan
+    // parcel. Dua parcel asli dipisah belt (celah lebar) → tidak tergabung.
     const vOverlap = (a: Rect, b: Rect) => {
       const y0 = Math.max(a.y, b.y);
       const y1 = Math.min(a.y + a.height, b.y + b.height);
@@ -450,8 +450,8 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         const a = out[i];
         const b = out[i + 1];
         const gap = b.x - (a.x + a.width);
-        const thGap = Math.min(24, Math.round(Math.min(a.height, b.height) * 0.25));
-        if (gap >= -8 && gap < thGap && vOverlap(a, b) >= 0.6) {
+        const hRatio = Math.max(a.height, b.height) / Math.max(1, Math.min(a.height, b.height));
+        if (gap >= -8 && gap < 14 && vOverlap(a, b) >= 0.6 && hRatio <= 1.6) {
           const x0 = Math.min(a.x, b.x);
           const y0 = Math.min(a.y, b.y);
           out[i] = { x: x0, y: y0, width: Math.max(a.x + a.width, b.x + b.width) - x0, height: Math.max(a.y + a.height, b.y + b.height) - y0, confidence: Math.max(a.confidence, b.confidence) };
