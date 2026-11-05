@@ -341,6 +341,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       let { x, y, width, height } = rect;
       const area = width * height;
       if (area < this.blobMinArea || area > this.blobMaxArea) continue;
+      // Sidebar/border viewer: blob MENEMPEL tepi kiri/kanan dengan tinggi ≥80%
+      // frame = chrome, bukan parcel (parcel tidak pernah full-height menempel tepi).
+      if ((x <= 3 || x + width >= W - 3) && height >= H * 0.8) continue;
       if (width < this.blobMinW || height < this.blobMinH) continue;
       // Buang blob di area chrome viewer (toolbar/status bar) hasil auto-ROI
       if (useAutoRoi && (y + height * 0.7 <= topEdge || y >= botEdge)) continue;
