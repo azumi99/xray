@@ -682,7 +682,7 @@ export function ScanCapture() {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const margin = 0.08;
+      const margin = 0.15;
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {

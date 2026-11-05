@@ -505,6 +505,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private track(source: string, boxes: Array<Rect & { confidence: number; source: 'yolo' | 'blob' }>, W: number, H: number): YoloDetection[] {
     const list = this.tracked.get(source) ?? [];
     const detections: YoloDetection[] = [];
+    // Satu frame = satu match per track. Tanpa ini dua box berdekatan (mis. hasil
+    // split internal satu parcel) cocok ke track yang sama → track lama tetap
+    // hidup & tampil tumpang tindih dengan track baru dalam 1 objek.
+    const matchedTracks = new Set<TrackedObject>();
     for (const box of boxes) {
       // clip ke frame utk display
       const bx = Math.max(0, box.x);
@@ -513,7 +517,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const bh = Math.min(box.height, H - by);
       if (bw < 10 || bh < 10) continue;
 
-      let obj = this.bestIouMatch(list, { x: bx, y: by, width: bw, height: bh });
+      let obj = this.bestIouMatch(list.filter((t) => !matchedTracks.has(t)), { x: bx, y: by, width: bw, height: bh });
       if (!obj) {
         const id = (this.nextId.get(source) ?? 0) + 1;
         this.nextId.set(source, id);
@@ -535,6 +539,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         };
         list.push(obj);
       } else {
+        matchedTracks.add(obj);
         // estimasi kecepatan (EMA): dx frame ini, dihaluskan
         const dx = bx - obj.box.x;
         obj.vx = obj.vx * 0.6 + dx * 0.4;
