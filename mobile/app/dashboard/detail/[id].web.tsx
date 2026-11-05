@@ -284,7 +284,7 @@ export default function DetailWebScreen() {
                             onPress={() => setPreview({ url: item.url, caption: `${member.colly_label || `Colly ${member.colly_index}`} · ${item.label}` })}
                             style={{ borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? '#374151' : '#E5E7EB', backgroundColor: isDark ? '#111827' : '#FFFFFF' }}
                           >
-                            <Image source={{ uri: item.url }} style={{ width: isSmall ? '100%' : 200, height: isSmall ? 150 : 130, resizeMode: 'cover' }} />
+                            <Image source={{ uri: item.url }} style={{ width: isSmall ? '100%' : 200, height: isSmall ? 150 : 130, resizeMode: 'contain' }} />
                             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 6, gap: 5 }}>
                               <Text style={{ fontSize: 10.5, fontWeight: '700', color: isDark ? '#93C5FD' : '#0369A1' }}>{item.label}</Text>
                               <Text style={{ fontSize: 10.5, color: textSub }}>· click to enlarge</Text>
@@ -305,7 +305,7 @@ export default function DetailWebScreen() {
                               onPress={() => setPreview({ url: fileUrl(ap.xray_photo), caption: `Re-scan #${ap.rescan}` })}
                               style={{ borderRadius: 10, overflow: 'hidden', borderWidth: 1, borderColor: isDark ? '#1F2937' : '#E5E7EB', opacity: 0.55 }}
                             >
-                              <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: isSmall ? '100%' : 150, height: isSmall ? 110 : 95, resizeMode: 'cover' }} />
+                              <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: isSmall ? '100%' : 150, height: isSmall ? 110 : 95, resizeMode: 'contain' }} />
                               <View style={{ position: 'absolute', top: 6, left: 6, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
                                 <Text style={{ fontSize: 9.5, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {ap.rescan} · {ap.xray_photo.includes('_top_') ? 'TOP' : 'SIDE'}</Text>
                               </View>

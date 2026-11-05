@@ -587,12 +587,12 @@ const DetailScreen = () => {
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {m.top_photo ? (
                       <TouchableOpacity activeOpacity={0.9} onPress={() => setSelectedPhoto(fileUrl(m.top_photo))} style={{ flex: 1, aspectRatio: 1.5, borderRadius: 10, overflow: 'hidden', backgroundColor: '#e5e7eb' }}>
-                        <Image source={{ uri: fileUrl(m.top_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                        <Image source={{ uri: fileUrl(m.top_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
                       </TouchableOpacity>
                     ) : null}
                     {m.side_photo ? (
                       <TouchableOpacity activeOpacity={0.9} onPress={() => setSelectedPhoto(fileUrl(m.side_photo))} style={{ flex: 1, aspectRatio: 1.5, borderRadius: 10, overflow: 'hidden', backgroundColor: '#e5e7eb' }}>
-                        <Image source={{ uri: fileUrl(m.side_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                        <Image source={{ uri: fileUrl(m.side_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
                       </TouchableOpacity>
                     ) : null}
                     {!m.top_photo && !m.side_photo ? (
@@ -607,7 +607,7 @@ const DetailScreen = () => {
                       <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap' }}>
                         {m.archived_photos!.map((ap) => (
                           <TouchableOpacity key={ap.xray_photo} activeOpacity={0.9} onPress={() => setSelectedPhoto(fileUrl(ap.xray_photo))} style={{ borderRadius: 10, overflow: 'hidden', opacity: 0.55 }}>
-                            <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: 110, height: 75, resizeMode: 'cover' }} />
+                            <Image source={{ uri: fileUrl(ap.xray_photo) }} style={{ width: 110, height: 75, resizeMode: 'contain' }} />
                             <View style={{ position: 'absolute', top: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
                               <Text style={{ fontSize: 9, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {ap.rescan} · {ap.xray_photo.includes('_top_') ? 'TOP' : 'SIDE'}</Text>
                             </View>
@@ -643,7 +643,7 @@ const DetailScreen = () => {
             >
               <Image 
                 source={{ uri: imageUrl }} 
-                style={{ width: '100%', height: '100%', resizeMode: 'cover' }}
+                style={{ width: '100%', height: '100%', resizeMode: 'contain' }}
               />
               {/* Gradient Overlay */}
               <LinearGradient
@@ -795,7 +795,7 @@ const DetailScreen = () => {
                     elevation: 2
                   }}
                 >
-                  <Image source={{ uri: photo }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                  <Image source={{ uri: photo }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
                   {/* Overlay count */}
                   <View style={{ position: 'absolute', top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
                     <Text style={{ color: 'white', fontSize: 10, fontWeight: '600' }}>#{index + 1}</Text>
@@ -831,7 +831,7 @@ const DetailScreen = () => {
                     onPress={() => setSelectedPhoto(fileUrl(detail.xray_photo))}
                     style={{ width: 130, height: 88, borderRadius: 12, overflow: 'hidden', opacity: 0.55 }}
                   >
-                    <Image source={{ uri: fileUrl(detail.xray_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+                    <Image source={{ uri: fileUrl(detail.xray_photo) }} style={{ width: '100%', height: '100%', resizeMode: 'contain' }} />
                     <View style={{ position: 'absolute', top: 5, left: 5, backgroundColor: 'rgba(0,0,0,0.7)', borderRadius: 5, paddingHorizontal: 6, paddingVertical: 2 }}>
                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#FCA5A5' }}>RE-SCAN {detail.rescan} · {String(detail.xray_photo).includes('_top_') ? 'TOP' : 'SIDE'}</Text>
                     </View>
