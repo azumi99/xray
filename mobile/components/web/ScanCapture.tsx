@@ -677,21 +677,24 @@ export function ScanCapture() {
     setBoxLabels('side', labels);
   }, [waiting.map((w) => `${w.id}:${w.status}`).join(',')]);
 
-  /** Crop frame ke area objek (+ margin 5%) supaya capture presisi sesuai objeknya */
+  /** Crop frame ke area objek supaya capture presisi sesuai objeknya.
+   *  Margin horizontal kecil: objek pipih punya box lebar → margin besar
+   *  membuat objek sebelah (kanan/kiri) ikut masuk crop. */
   const cropToBox = (frame: string, box: Box | undefined): Promise<string> => {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const margin = 0.15;
+      const marginX = 0.04;
+      const marginY = 0.15;
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
           const iw = img.naturalWidth || FRAME_WIDTH;
           const ih = img.naturalHeight || FRAME_HEIGHT;
-          const x = Math.max(0, box.x - box.width * margin);
-          const y = Math.max(0, box.y - box.height * margin);
-          const w = Math.max(1, Math.min(iw - x, box.width * (1 + margin * 2)));
-          const h = Math.max(1, Math.min(ih - y, box.height * (1 + margin * 2)));
+          const x = Math.max(0, box.x - box.width * marginX);
+          const y = Math.max(0, box.y - box.height * marginY);
+          const w = Math.max(1, Math.min(iw - x, box.width * (1 + marginX * 2)));
+          const h = Math.max(1, Math.min(ih - y, box.height * (1 + marginY * 2)));
           const can = document.createElement('canvas');
           can.width = Math.round(w);
           can.height = Math.round(h);
