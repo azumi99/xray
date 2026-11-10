@@ -709,14 +709,19 @@ export function ScanCapture() {
   }, [waiting.map((w) => `${w.id}:${w.status}`).join(',')]);
 
   /** Crop frame ke area objek supaya capture presisi sesuai objeknya.
-   *  Margin horizontal moderat: cukup agar objek terlihat full, tanpa memasukkan
-   *  objek sebelah (kasus objek pipih yang box-nya lebar). */
+   *  Margin adaptif per bentuk parcel:
+   *  - Pipih (lebar ≫ tinggi): margin X kecil — box sudah lebar, margin besar
+   *    membuat objek sebelah ikut masuk crop.
+   *  - Besar/normal: margin lega — tepi dinding parcel yang samar sering lolos
+   *    dari threshold deteksi sehingga box lebih kecil dari parcel aslinya. */
   const cropToBox = (frame: string, box: Box | undefined): Promise<string> => {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const marginX = 0.1;
-      const marginY = 0.15;
+      const aspect = box.width / Math.max(1, box.height);
+      const flat = aspect >= 1.6;
+      const marginX = flat ? 0.05 : 0.12;
+      const marginY = flat ? 0.12 : 0.18;
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
