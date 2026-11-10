@@ -389,7 +389,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       let segStart = x;
       let gapRun = 0;
       for (let cx = x; cx < x + width; cx++) {
-        if (colFrac(cx) < 0.12) {
+        if (colFrac(cx) < 0.15) {
           gapRun++;
           if (gapRun === 4) {
             const sw = cx - gapRun + 1 - segStart;
@@ -467,7 +467,33 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
 
   /** NMS — deteksi confidence tertinggi dipertahankan */
   private nms(items: Array<Rect & { confidence: number; source: 'yolo' | 'blob' }>) {
-    const sorted = [...items].sort((a, b) => b.confidence - a.confidence);
+    // Pre-pass ANTI-MERGE: box besar yang menampung ≥2 kandidat kecil SALING-LEPAS
+    // horizontal (jarak nyata, tidak tumpang tindih) = dua parcel dempet yang
+    // terdeteksi sebagai satu box — YOLO pretrained sering melakukannya, dan tanpa
+    // pre-pass ini hasil split blob dibuang NMS karena berada di dalam box besar.
+    // Buang box besar, pertahankan kandidat kecil yang lebih presisi.
+    const mergedOut = new Set<(typeof items)[number]>();
+    const byArea = [...items].sort((a, b) => b.width * b.height - a.width * a.height);
+    for (const big of byArea) {
+      if (mergedOut.has(big)) continue;
+      const inner = items.filter((o) => o !== big && !mergedOut.has(o)
+        && this.containment(big, o) >= 0.55
+        && o.width * o.height <= big.width * big.height * 0.75);
+      let split = false;
+      for (let i = 0; i < inner.length && !split; i++) {
+        for (let j = i + 1; j < inner.length && !split; j++) {
+          const a = inner[i];
+          const b = inner[j];
+          const gapRight = b.x - (a.x + a.width);
+          const gapLeft = a.x - (b.x + b.width);
+          // dua sub-box berjauhan horizontal & tidak tumpuk = dua objek terpisah
+          if (this.iou(a, b) < 0.15 && Math.max(gapRight, gapLeft) >= 8) split = true;
+        }
+      }
+      if (split) mergedOut.add(big);
+    }
+    const rest = mergedOut.size ? items.filter((o) => !mergedOut.has(o)) : items;
+    const sorted = [...rest].sort((a, b) => b.confidence - a.confidence);
     const keep: typeof sorted = [];
     for (const item of sorted) {
       // 1 objek = 1 box. Duplikat umum: IoU rendah karena box saling lepas
