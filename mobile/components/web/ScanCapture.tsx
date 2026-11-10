@@ -71,8 +71,10 @@ class PanelEngine {
   /** Indeks yang sudah pernah di-capture — menjaga 1 objek = 1 capture walau backend trigger ulang */
   private capturedIds = new Map<number, number>();
   /** Hasil capture selesai per panel — dipasangkan ke top berdasarkan WAKTU trigger
-   *  (dual-view: objek yang sama keluar kiri hampir bersamaan di kedua panel) */
-  private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number }> = [];
+   *  (dual-view: objek yang sama keluar kiri hampir bersamaan di kedua panel).
+   *  `used`: completion boleh dipakai 2 job — kasus 2 parcel dempet yang terdeteksi
+   *  1 blob di side menghasilkan 1 completion untuk 2 objek top. */
+  private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number; used: number }> = [];
   /** Urutan trigger sesi ini — objek ke-N yang selesai ↔ AWB waiting ke-N (id ASC), bukan id tracker */
   private triggerSeq = 0;
   /** Guard pipelined: hanya satu POST detect in-flight */
@@ -237,23 +239,37 @@ class PanelEngine {
   }
 
   /** Ambil completion yang WAKTU trigger-nya paling dekat dengan trigger top.
-   *  Pairing waktu jauh lebih tahan terhadap geser indeks (objek dempet jadi 1 blob
-   *  atau terlewat di side) daripada pasangan nomor urut yang bisa meleset total. */
-  takeCompletedByTime(tsTop: number, windowMs = 2500): { frame: string; box: Box } | undefined {
+   *  Window ketat (1.5s) supaya completion objek SEBELAH (jarak belt pendek)
+   *  tidak ikut terjaring. Kalau tidak ada yang segar & belum terpakai, boleh
+   *  PAKAI ULANG (maks 2×) completion yang sudah dipakai — kasus 2 parcel dempet
+   *  yang jadi 1 blob di side: satu frame gabungan untuk kedua objek top,
+   *  jauh lebih benar daripada fallback frame objek lain. */
+  takeCompletedByTime(tsTop: number, windowMs = 1500): { frame: string; box: Box } | undefined {
     let bestIdx = -1;
     let bestDt = Infinity;
     for (let i = 0; i < this.completedQueue.length; i += 1) {
-      const dt = Math.abs(this.completedQueue[i].ts - tsTop);
-      if (dt < bestDt) {
+      const e = this.completedQueue[i];
+      const dt = Math.abs(e.ts - tsTop);
+      if (dt <= windowMs && e.used === 0 && dt < bestDt) {
         bestDt = dt;
         bestIdx = i;
       }
     }
-    if (bestIdx >= 0 && bestDt <= windowMs) {
-      const entry = this.completedQueue.splice(bestIdx, 1)[0];
-      return { frame: entry.frame, box: entry.box };
+    if (bestIdx < 0) {
+      for (let i = 0; i < this.completedQueue.length; i += 1) {
+        const e = this.completedQueue[i];
+        const dt = Math.abs(e.ts - tsTop);
+        if (dt <= windowMs && e.used === 1 && dt < bestDt) {
+          bestDt = dt;
+          bestIdx = i;
+        }
+      }
     }
-    return undefined;
+    if (bestIdx < 0) return undefined;
+    const entry = this.completedQueue[bestIdx];
+    entry.used += 1;
+    if (entry.used >= 2) this.completedQueue.splice(bestIdx, 1);
+    return { frame: entry.frame, box: entry.box };
   }
 
   /** Side sudah memproses objek SETELAH window top → objek top pasti terlewat, jangan tunggu */
@@ -420,7 +436,7 @@ class PanelEngine {
               const seq = this.triggerSeq++;
               // cxNorm (posisi x relatif saat keluar kiri) ikut dibawa di box untuk pairing posisi
               const box: Box = { ...(best?.box ?? trig), cxNorm: (trig.x + trig.width / 2) / FRAME_WIDTH };
-              this.completedQueue.push({ frame: best?.frame ?? payload, box, ts: now, seq });
+              this.completedQueue.push({ frame: best?.frame ?? payload, box, ts: now, seq, used: 0 });
               if (this.completedQueue.length > 32) this.completedQueue.shift();
               this.handlers.onTrigger?.(best?.frame ?? payload, box, seq);
             }
@@ -699,7 +715,7 @@ export function ScanCapture() {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const marginX = 0.08;
+      const marginX = 0.1;
       const marginY = 0.15;
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
@@ -744,7 +760,7 @@ export function ScanCapture() {
             sideBest = sideEngine.takeCompletedByTime(job.ts) ?? undefined;
             if (sideBest) break;
             // Side sudah menyelesaikan objek SETELAHNYA → objek ini terlewat, jangan tunggu
-            if (sideEngine.hasCompletionAfter(job.ts + 3000)) break;
+            if (sideEngine.hasCompletionAfter(job.ts + 2000)) break;
             await new Promise((resolve) => setTimeout(resolve, 250));
           }
         }

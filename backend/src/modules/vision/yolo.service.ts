@@ -153,13 +153,15 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     });
 
     // ---------- 2) blob gelap (assist domain X-ray) ----------
-    const blobBoxes = gray ? this.detectBlobs(gray, W, H) : [];
+    const blobRes = gray ? this.detectBlobs(gray, W, H) : null;
 
     // ---------- 3) gabung + NMS ----------
+    // Konteks brightness dibawa ke NMS untuk membedakan "dua parcel terpisah belt
+    // (koridor terang penuh)" vs "isi X-ray di dalam SATU parcel (koridor gelap)".
     const merged = this.nms([
-      ...blobBoxes.map((b) => ({ ...b, source: 'blob' as const })),
+      ...(blobRes?.boxes ?? []).map((b) => ({ ...b, source: 'blob' as const })),
       ...yoloBoxes.map((b) => ({ ...b, source: 'yolo' as const })),
-    ]);
+    ], gray && blobRes ? { gray, W, bgLevel: blobRes.bgLevel, thByte: blobRes.thByte } : null);
 
     // ---------- 4) tracking + trigger ----------
     return this.track(source, merged, W, H);
@@ -224,7 +226,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
    *  level bg diukur dari strip atas frame (baris paling sedikit tertutup objek),
    *  noise bg dihitung dari deviasi strip tsb. Objek = piksel < bg - k*noise.
    *  Lebih presisi dari percentile global: tidak tergeser jumlah objek di frame. */
-  private detectBlobs(gray: Float32Array, W: number, H: number): Array<Rect & { confidence: number }> {
+  private detectBlobs(gray: Float32Array, W: number, H: number): { boxes: Array<Rect & { confidence: number }>; bgLevel: number; thByte: number } {
     const cv = this.cv;
     // ---------- ukur background dari strip atas (8 baris pertama di bawah margin) ----------
     // belt kosong paling atas frame — objek masuk dari kiri dan mengisi tengah/bawah
@@ -389,7 +391,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       let segStart = x;
       let gapRun = 0;
       for (let cx = x; cx < x + width; cx++) {
-        if (colFrac(cx) < 0.15) {
+        if (colFrac(cx) < 0.12) {
           gapRun++;
           if (gapRun === 4) {
             const sw = cx - gapRun + 1 - segStart;
@@ -463,34 +465,36 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
-    return out;  }
+    return { boxes: out, bgLevel, thByte };
+  }
 
   /** NMS — deteksi confidence tertinggi dipertahankan */
-  private nms(items: Array<Rect & { confidence: number; source: 'yolo' | 'blob' }>) {
-    // Pre-pass ANTI-MERGE: box besar yang menampung ≥2 kandidat kecil SALING-LEPAS
-    // horizontal (jarak nyata, tidak tumpang tindih) = dua parcel dempet yang
-    // terdeteksi sebagai satu box — YOLO pretrained sering melakukannya, dan tanpa
-    // pre-pass ini hasil split blob dibuang NMS karena berada di dalam box besar.
-    // Buang box besar, pertahankan kandidat kecil yang lebih presisi.
+  private nms(items: Array<Rect & { confidence: number; source: 'yolo' | 'blob' }>, bg: { gray: Float32Array; W: number; bgLevel: number; thByte: number } | null) {
+    // Pre-pass ANTI-MERGE: box besar hanya dipecah bila menampung ≥2 kandidat kecil
+    // yang dipisah KORIDOR TERANG penuh (belt kosong menembus di antara keduanya)
+    // = dua parcel berbeda. Tanpa koridor terang → kandidat kecil itu ISI X-ray
+    // di dalam satu parcel → box besar (outline parcel) dipertahankan.
     const mergedOut = new Set<(typeof items)[number]>();
-    const byArea = [...items].sort((a, b) => b.width * b.height - a.width * a.height);
-    for (const big of byArea) {
-      if (mergedOut.has(big)) continue;
-      const inner = items.filter((o) => o !== big && !mergedOut.has(o)
-        && this.containment(big, o) >= 0.55
-        && o.width * o.height <= big.width * big.height * 0.75);
-      let split = false;
-      for (let i = 0; i < inner.length && !split; i++) {
-        for (let j = i + 1; j < inner.length && !split; j++) {
-          const a = inner[i];
-          const b = inner[j];
-          const gapRight = b.x - (a.x + a.width);
-          const gapLeft = a.x - (b.x + b.width);
-          // dua sub-box berjauhan horizontal & tidak tumpuk = dua objek terpisah
-          if (this.iou(a, b) < 0.15 && Math.max(gapRight, gapLeft) >= 8) split = true;
+    if (bg) {
+      const byArea = [...items].sort((a, b) => b.width * b.height - a.width * a.height);
+      for (const big of byArea) {
+        if (mergedOut.has(big)) continue;
+        const inner = items.filter((o) => o !== big && !mergedOut.has(o)
+          && this.containment(big, o) >= 0.55
+          && o.width * o.height <= big.width * big.height * 0.75);
+        let split = false;
+        for (let i = 0; i < inner.length && !split; i++) {
+          for (let j = i + 1; j < inner.length && !split; j++) {
+            const a = inner[i];
+            const b = inner[j];
+            const gapRight = b.x - (a.x + a.width);
+            const gapLeft = a.x - (b.x + b.width);
+            if (this.iou(a, b) < 0.15 && Math.max(gapRight, gapLeft) >= 8
+              && this.brightCorridor(a, b, big, bg)) split = true;
+          }
         }
+        if (split) mergedOut.add(big);
       }
-      if (split) mergedOut.add(big);
     }
     const rest = mergedOut.size ? items.filter((o) => !mergedOut.has(o)) : items;
     const sorted = [...rest].sort((a, b) => b.confidence - a.confidence);
@@ -509,13 +513,39 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         else {
           const cdx = (k.x + k.width / 2) - (item.x + item.width / 2);
           const cdy = (k.y + k.height / 2) - (item.y + item.height / 2);
-          const diag = Math.sqrt(item.width ** 2 + item.height ** 2);
-          if (Math.sqrt(cdx * cdx + cdy * cdy) < diag * 0.55) dup = true;
+          // pakai diagonal TERKECIL: box besar (outline parcel) tidak boleh dianggap
+          // duplikat hanya karena pusatnya dekat box kecil (isi X-ray) di dalamnya
+          const diag = Math.min(Math.hypot(item.width, item.height), Math.hypot(k.width, k.height));
+          if (Math.hypot(cdx * cdx + cdy * cdy) < diag * 0.55) dup = true;
         }
       }
       if (!dup) keep.push(item);
     }
     return keep;
+  }
+
+  /** Koridor vertikal antara dua box harus seterang belt kosong (sinar menembus
+   *  penuh) untuk menyimpulkan dua parcel berbeda. Koridor gelap/keruh = masih
+   *  ada penyerapan = isi X-ray dalam SATU parcel → jangan dipecah. */
+  private brightCorridor(a: Rect, b: Rect, big: Rect, bg: { gray: Float32Array; W: number; bgLevel: number; thByte: number }): boolean {
+    const gapRight = b.x - (a.x + a.width);
+    const cx0 = Math.round(gapRight >= 0 ? a.x + a.width : b.x + b.width);
+    const cx1 = Math.round(gapRight >= 0 ? b.x : a.x);
+    if (cx1 - cx0 < 4) return false; // celah terlalu tipis untuk dinilai → konservatif: jangan pecah
+    const y0 = Math.round(big.y);
+    const y1 = Math.round(big.y + big.height);
+    if (y1 - y0 < 12) return false;
+    let s = 0;
+    let n = 0;
+    for (let y = y0; y < y1; y++) {
+      for (let x = cx0; x < cx1; x++) {
+        s += bg.gray[y * bg.W + x];
+        n += 1;
+      }
+    }
+    if (!n) return false;
+    const mean = s / n;
+    return mean >= bg.bgLevel - 0.35 * (bg.bgLevel - bg.thByte);
   }
 
   /** rasio area item yang berada di dalam box ref (0..1) */
@@ -574,6 +604,13 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
 
       let obj = this.bestIouMatch(list.filter((t) => !matchedTracks.has(t)), { x: bx, y: by, width: bw, height: bh });
       if (!obj) {
+        // Box yang ≥75% berada di dalam (atau menutupi) track aktif = isi X-ray /
+        // belahan box dari parcel yang SUDAH tertrack — bukan objek baru.
+        // Menjamin 1 parcel = 1 bounding box (tidak pecah per isi X-ray).
+        const cand = { x: bx, y: by, width: bw, height: bh };
+        const covered = list.some((t) => t.missed <= this.maxMissed
+          && (this.containment(t.box, cand) >= 0.75 || this.containment(cand, t.box) >= 0.75));
+        if (covered) continue;
         const id = (this.nextId.get(source) ?? 0) + 1;
         this.nextId.set(source, id);
         obj = {
@@ -674,15 +711,18 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     }
     if (best) return best;
     // fallback: box jitter pada objek samar sering IoU < threshold tapi pusatnya tidak jauh bergerak —
-    // anggap objek sama jika jarak pusat < 40% diagonal box
+    // anggap objek sama jika jarak pusat < 40% diagonal box DAN ukurannya sebanding
+    // (0.35–2.8×) — tanpa cek ukuran, box isi X-ray yang kecil bisa membajak track parcel
     const cx = box.x + box.width / 2;
     const cy = box.y + box.height / 2;
     const diag = Math.hypot(box.width, box.height);
+    const boxArea = box.width * box.height;
     for (const t of list) {
       if (t.missed > this.maxMissed) continue;
       const tx = t.box.x + t.box.width / 2;
       const ty = t.box.y + t.box.height / 2;
-      if (Math.hypot(tx - cx, ty - cy) < diag * this.centerMatchRatio) return t;
+      const areaRatio = (t.box.width * t.box.height) / Math.max(1, boxArea);
+      if (areaRatio > 0.35 && areaRatio < 2.8 && Math.hypot(tx - cx, ty - cy) < diag * this.centerMatchRatio) return t;
     }
     return null;
   }
