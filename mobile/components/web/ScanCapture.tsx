@@ -14,8 +14,6 @@ type Box = {
   trigger?: boolean;
   confidence?: number;
   source?: 'yolo' | 'blob';
-  /** Posisi tengah-x relatif (0..1) saat objek keluar kiri — untuk pairing posisi */
-  cxNorm?: number;
 };
 type AwbRow = {
   id: string;
@@ -70,11 +68,8 @@ class PanelEngine {
   private bestFrames = new Map<number, { frame: string; box: Box; scale?: number }>();
   /** Indeks yang sudah pernah di-capture — menjaga 1 objek = 1 capture walau backend trigger ulang */
   private capturedIds = new Map<number, number>();
-  /** Hasil capture selesai per panel — dipasangkan ke top berdasarkan WAKTU trigger
-   *  (dual-view: objek yang sama keluar kiri hampir bersamaan di kedua panel).
-   *  `used`: completion boleh dipakai 2 job — kasus 2 parcel dempet yang terdeteksi
-   *  1 blob di side menghasilkan 1 completion untuk 2 objek top. */
-  private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number; used: number }> = [];
+  /** Hasil capture selesai per panel, bernomor urut objek — dipasangkan seq top ↔ seq side */
+  private completedQueue: Array<{ frame: string; box: Box; ts: number; seq: number }> = [];
   /** Urutan trigger sesi ini — objek ke-N yang selesai ↔ AWB waiting ke-N (id ASC), bukan id tracker */
   private triggerSeq = 0;
   /** Guard pipelined: hanya satu POST detect in-flight */
@@ -238,43 +233,20 @@ class PanelEngine {
     return false;
   }
 
-  /** Ambil completion yang WAKTU trigger-nya paling dekat dengan trigger top.
-   *  Window ketat (1.5s) supaya completion objek SEBELAH (jarak belt pendek)
-   *  tidak ikut terjaring. Kalau tidak ada yang segar & belum terpakai, boleh
-   *  PAKAI ULANG (maks 2×) completion yang sudah dipakai — kasus 2 parcel dempet
-   *  yang jadi 1 blob di side: satu frame gabungan untuk kedua objek top,
-   *  jauh lebih benar daripada fallback frame objek lain. */
-  takeCompletedByTime(tsTop: number, windowMs = 1500): { frame: string; box: Box } | undefined {
-    let bestIdx = -1;
-    let bestDt = Infinity;
-    for (let i = 0; i < this.completedQueue.length; i += 1) {
-      const e = this.completedQueue[i];
-      const dt = Math.abs(e.ts - tsTop);
-      if (dt <= windowMs && e.used === 0 && dt < bestDt) {
-        bestDt = dt;
-        bestIdx = i;
-      }
+  /** Ambil completion ber-nomor urut tertentu; entri basi (seq lebih kecil) dibuang */
+  takeCompleted(seq: number): { frame: string; box: Box } | undefined {
+    while (this.completedQueue.length > 0 && this.completedQueue[0].seq < seq) this.completedQueue.shift();
+    const entry = this.completedQueue[0];
+    if (entry && entry.seq === seq) {
+      this.completedQueue.shift();
+      return { frame: entry.frame, box: entry.box };
     }
-    if (bestIdx < 0) {
-      for (let i = 0; i < this.completedQueue.length; i += 1) {
-        const e = this.completedQueue[i];
-        const dt = Math.abs(e.ts - tsTop);
-        if (dt <= windowMs && e.used === 1 && dt < bestDt) {
-          bestDt = dt;
-          bestIdx = i;
-        }
-      }
-    }
-    if (bestIdx < 0) return undefined;
-    const entry = this.completedQueue[bestIdx];
-    entry.used += 1;
-    if (entry.used >= 2) this.completedQueue.splice(bestIdx, 1);
-    return { frame: entry.frame, box: entry.box };
+    return undefined;
   }
 
-  /** Side sudah memproses objek SETELAH window top → objek top pasti terlewat, jangan tunggu */
-  hasCompletionAfter(ts: number): boolean {
-    return this.completedQueue.some((e) => e.ts > ts);
+  /** Seq completion berikutnya yang tersedia (null = kosong) */
+  peekCompletedSeq(): number | null {
+    return this.completedQueue[0]?.seq ?? null;
   }
 
   stop(clearSaved = true) {
@@ -309,30 +281,28 @@ class PanelEngine {
     }
   }
 
-  /** Frame terbaik objek SIDE yang posisi-x relatifnya paling dekat dengan box Top.
+  /** Frame terbaik objek SIDE yang PUSAT-X-nya paling dekat dgn pusat-x box Top yang sama.
    *  Pairing posisi belt, bukan urutan indeks: jumlah box side bisa beda dgn top
-   *  (2 parcel dempet di side jadi 1 blob) — indeks bergeser, posisi tidak.
-   *  Semua koordinat dinormalisasi ke rasio 0..1 agar skala hi-res vs frame konsisten. */
-  getBestNearX(cxNorm: number): { frame: string; box: Box } | undefined {
-    let nearest: Box | undefined;
+   *  (2 parcel dempet di side jadi 1 blob) — indeks bergeser, posisi tidak. */
+  getBestNearX(cxTop: number): { frame: string; box: Box } | undefined {
+    let best: { frame: string; box: Box } | undefined;
     let bestDist = Infinity;
     for (const b of this.boxes) {
-      const d = Math.abs((b.x + b.width / 2) / FRAME_WIDTH - cxNorm);
+      const d = Math.abs(b.x + b.width / 2 - cxTop);
       if (d < bestDist) {
         bestDist = d;
-        nearest = b;
+        const bestFrame = this.bestFrames.get(b.id);
+        if (bestFrame) best = bestFrame; // frame kosong = belum terekam → biarkan fallback terpakai
       }
     }
-    // Terlalu jauh = bukan objek yang sama → lebih baik tanpa pasangan (frame penuh) daripada salah objek
-    if (!nearest || bestDist > 0.25) return undefined;
-    return this.bestFrames.get(nearest.id);
+    return best;
   }
 
-  /** Frame terbaik dari objek SIDE yang sedang aktif, urut kiri→kanan
-   *  (= urutan keluar belt: paling kiri keluar pertama → indeks = urutan trigger). */
+  /** Frame terbaik dari objek SIDE yang sedang aktif, urut kanan→kiri.
+   *  Jangan memakai seluruh cache: objek lama bisa menggeser pasangan Top↔Side. */
   getBest(queueIndex: number): { frame: string; box: Box } | undefined {
     const active = [...this.boxes]
-      .sort((a, b) => (a.x + a.width / 2) - (b.x + b.width / 2));
+      .sort((a, b) => (b.x + b.width / 2) - (a.x + a.width / 2));
     const target = active[queueIndex];
     return target ? this.bestFrames.get(target.id) : undefined;
   }
@@ -434,11 +404,9 @@ class PanelEngine {
               const best = this.bestFrames.get(trig.id);
               this.bestFrames.delete(trig.id);
               const seq = this.triggerSeq++;
-              // cxNorm (posisi x relatif saat keluar kiri) ikut dibawa di box untuk pairing posisi
-              const box: Box = { ...(best?.box ?? trig), cxNorm: (trig.x + trig.width / 2) / FRAME_WIDTH };
-              this.completedQueue.push({ frame: best?.frame ?? payload, box, ts: now, seq, used: 0 });
+              this.completedQueue.push({ frame: best?.frame ?? payload, box: best?.box ?? trig, ts: now, seq });
               if (this.completedQueue.length > 32) this.completedQueue.shift();
-              this.handlers.onTrigger?.(best?.frame ?? payload, box, seq);
+              this.handlers.onTrigger?.(best?.frame ?? payload, best?.box ?? trig, seq);
             }
           } catch {
             this.emptyCycles += 1;
@@ -656,8 +624,9 @@ export function ScanCapture() {
   const [capture] = useMutation(CAPTURE);
   const topFrame = useRef('');
   const sideFrame = useRef('');
+  const sideBox = useRef<Box | undefined>(undefined);
   // Antrian capture diurutkan per indeks objek — capture berdasarkan urutan indeksnya
-  const captureQueue = useRef<Array<{ image: string; box?: Box; queueIndex: number; ts: number }>>([]);
+  const captureQueue = useRef<Array<{ image: string; box?: Box; queueIndex: number }>>([]);
   const pumping = useRef(false);
   const [waiting, setWaiting] = useState<AwbRow[]>([]);
   /** Baris dengan animasi: entering (baru masuk) / exiting (status berubah, keluar antrean) */
@@ -708,33 +677,24 @@ export function ScanCapture() {
     setBoxLabels('side', labels);
   }, [waiting.map((w) => `${w.id}:${w.status}`).join(',')]);
 
-  /** Crop frame ke area objek SESUAI BENTUK parcel (panjang × tinggi) + padding dikit.
-   *  Margin di-interpolasi mulus dari rasio lebar/tinggi:
-   *  - Parcel pipih (panjang ≫ tinggi): margin X mengecil — box sudah lebar, padding
-   *    besar membuat objek sebelah ikut masuk crop.
-   *  - Parcel tegak/normal: margin lega — tepi dinding samar sering lolos threshold
-   *    deteksi sehingga box lebih kecil dari parcel aslinya.
-   *  Padding absolut minimum menjamin parcel kecil/tipis tetap dapat napas. */
+  /** Crop frame ke area objek supaya capture presisi sesuai objeknya.
+   *  Margin horizontal kecil: objek pipih punya box lebar → margin besar
+   *  membuat objek sebelah (kanan/kiri) ikut masuk crop. */
   const cropToBox = (frame: string, box: Box | undefined): Promise<string> => {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const aspect = box.width / Math.max(1, box.height);
-      // t = 0 (tegak/persegi) → 1 (pipih, lebar ≥ 2.5× tinggi)
-      const t = Math.min(1, Math.max(0, (aspect - 1) / 1.5));
-      const marginX = 0.12 - 0.08 * t; // 12% → 4%
-      const marginY = 0.15 - 0.05 * t; // 15% → 10%
-      const padX = Math.max(box.width * marginX, 14);
-      const padY = Math.max(box.height * marginY, 12);
+      const marginX = 0.04;
+      const marginY = 0.15;
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
           const iw = img.naturalWidth || FRAME_WIDTH;
           const ih = img.naturalHeight || FRAME_HEIGHT;
-          const x = Math.max(0, box.x - padX);
-          const y = Math.max(0, box.y - padY);
-          const w = Math.max(1, Math.min(iw - x, box.width + padX * 2));
-          const h = Math.max(1, Math.min(ih - y, box.height + padY * 2));
+          const x = Math.max(0, box.x - box.width * marginX);
+          const y = Math.max(0, box.y - box.height * marginY);
+          const w = Math.max(1, Math.min(iw - x, box.width * (1 + marginX * 2)));
+          const h = Math.max(1, Math.min(ih - y, box.height * (1 + marginY * 2)));
           const can = document.createElement('canvas');
           can.width = Math.round(w);
           can.height = Math.round(h);
@@ -762,22 +722,20 @@ export function ScanCapture() {
         const sideEngine = engines.get('side');
         let sideBest: { frame: string; box: Box } | undefined;
         if (sideEngine?.getSnapshot().running) {
-          // Pairing berbasis WAKTU trigger: objek yang sama keluar kiri hampir
-          // bersamaan di kedua panel dual-view → tahan terhadap geser indeks
-          // (objek dempet jadi 1 blob / terlewat di side, yang membingungkan pasangan seq).
+          // Tunggu completion side dengan nomor urut SAMA dengan job top (belt sama → objek ke-N = ke-N).
+          // Seq lebih kecil = basi (dibuang); seq lebih besar = objek ini terlewat di side.
           for (let t = 0; t < 24 && !sideBest; t += 1) {
-            sideBest = sideEngine.takeCompletedByTime(job.ts) ?? undefined;
+            sideBest = sideEngine.takeCompleted(job.queueIndex) ?? undefined;
             if (sideBest) break;
-            // Side sudah menyelesaikan objek SETELAHNYA → objek ini terlewat, jangan tunggu
-            if (sideEngine.hasCompletionAfter(job.ts + 2000)) break;
+            const next = sideEngine.peekCompletedSeq();
+            if (next !== null && next > job.queueIndex) break;
             await new Promise((resolve) => setTimeout(resolve, 250));
           }
         }
-        // Fallback berurut: posisi x terdekat (rasio) → indeks objek aktif → frame penuh
-        sideBest ??= (job.box?.cxNorm != null ? sideEngine?.getBestNearX(job.box.cxNorm) : undefined);
         sideBest ??= sideEngine?.getBest(job.queueIndex);
+        if (!sideBest && job.box) sideBest = sideEngine?.getBestNearX(job.box.x + job.box.width / 2);
         const topImage = await cropToBox(job.image, job.box);
-        const sideImage = await cropToBox(sideBest?.frame ?? sideFrame.current, sideBest?.box);
+        const sideImage = await cropToBox(sideBest?.frame ?? sideFrame.current, sideBest?.box ?? sideBox.current);
         let sent = false;
         for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
           try {
@@ -796,7 +754,7 @@ export function ScanCapture() {
   };
 
   const onTopTrigger = (image: string, box?: Box, queueIndex?: number) => {
-    captureQueue.current.push({ image, box, queueIndex: queueIndex ?? 0, ts: Date.now() });
+    captureQueue.current.push({ image, box, queueIndex: queueIndex ?? 0 });
     void pumpQueue();
   };
 
@@ -810,6 +768,9 @@ export function ScanCapture() {
           onTrigger={() => {}}
           onFrame={(image) => {
             sideFrame.current = image;
+            // box terakhir yang terdeteksi di panel samping → crop fit saat capture
+            const e = engines.get('side');
+            sideBox.current = e?.boxes?.[0];
           }}
         />
       </View>
