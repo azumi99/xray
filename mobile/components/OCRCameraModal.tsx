@@ -493,6 +493,10 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
         if (barcodeHandledRef.current || isProcessing || isSaving) return;
         const value = (data ?? '').trim();
         if (!value || value.length < 4) return;
+        // newScan: hanya terima QR berformat MAWB/HAWB_PART_TOTAL (kode boleh
+        // angka-huruf-dash) — QR lain di kemasan (tautan produk, dsb.) menghasilkan
+        // value asing yang salah terpasang sebagai MAWB
+        if (newScan && !/^[A-Za-z0-9-]+_\d+_\d+$/.test(value)) return;
 
         const x = bounds?.origin?.x ?? 0;
         const y = bounds?.origin?.y ?? 0;
@@ -885,7 +889,7 @@ const OCRCameraModal = ({ visible, onClose, onCaptureComplete }: OCRCameraModalP
                             ref={cameraRef}
                             autofocus="on"
                             onBarcodeScanned={handleBarcodeScanned}
-                            barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128', 'code39', 'itf14', 'ean13', 'codabar'] }}
+                            barcodeScannerSettings={{ barcodeTypes: newScan ? ['qr'] : ['qr', 'code128', 'code39', 'itf14', 'ean13', 'codabar'] }}
                         >
                             <View style={styles.safeAreaWrapper}>
                                 <View style={styles.controlsContainer}>

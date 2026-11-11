@@ -708,29 +708,33 @@ export function ScanCapture() {
     setBoxLabels('side', labels);
   }, [waiting.map((w) => `${w.id}:${w.status}`).join(',')]);
 
-  /** Crop frame ke area objek supaya capture presisi sesuai objeknya.
-   *  Margin adaptif per bentuk parcel:
-   *  - Pipih (lebar ≫ tinggi): margin X kecil — box sudah lebar, margin besar
-   *    membuat objek sebelah ikut masuk crop.
-   *  - Besar/normal: margin lega — tepi dinding parcel yang samar sering lolos
-   *    dari threshold deteksi sehingga box lebih kecil dari parcel aslinya. */
+  /** Crop frame ke area objek SESUAI BENTUK parcel (panjang × tinggi) + padding dikit.
+   *  Margin di-interpolasi mulus dari rasio lebar/tinggi:
+   *  - Parcel pipih (panjang ≫ tinggi): margin X mengecil — box sudah lebar, padding
+   *    besar membuat objek sebelah ikut masuk crop.
+   *  - Parcel tegak/normal: margin lega — tepi dinding samar sering lolos threshold
+   *    deteksi sehingga box lebih kecil dari parcel aslinya.
+   *  Padding absolut minimum menjamin parcel kecil/tipis tetap dapat napas. */
   const cropToBox = (frame: string, box: Box | undefined): Promise<string> => {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
       const aspect = box.width / Math.max(1, box.height);
-      const flat = aspect >= 1.6;
-      const marginX = flat ? 0.05 : 0.12;
-      const marginY = flat ? 0.12 : 0.18;
+      // t = 0 (tegak/persegi) → 1 (pipih, lebar ≥ 2.5× tinggi)
+      const t = Math.min(1, Math.max(0, (aspect - 1) / 1.5));
+      const marginX = 0.12 - 0.08 * t; // 12% → 4%
+      const marginY = 0.15 - 0.05 * t; // 15% → 10%
+      const padX = Math.max(box.width * marginX, 14);
+      const padY = Math.max(box.height * marginY, 12);
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
           const iw = img.naturalWidth || FRAME_WIDTH;
           const ih = img.naturalHeight || FRAME_HEIGHT;
-          const x = Math.max(0, box.x - box.width * marginX);
-          const y = Math.max(0, box.y - box.height * marginY);
-          const w = Math.max(1, Math.min(iw - x, box.width * (1 + marginX * 2)));
-          const h = Math.max(1, Math.min(ih - y, box.height * (1 + marginY * 2)));
+          const x = Math.max(0, box.x - padX);
+          const y = Math.max(0, box.y - padY);
+          const w = Math.max(1, Math.min(iw - x, box.width + padX * 2));
+          const h = Math.max(1, Math.min(ih - y, box.height + padY * 2));
           const can = document.createElement('canvas');
           can.width = Math.round(w);
           can.height = Math.round(h);

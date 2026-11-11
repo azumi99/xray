@@ -604,12 +604,14 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
 
       let obj = this.bestIouMatch(list.filter((t) => !matchedTracks.has(t)), { x: bx, y: by, width: bw, height: bh });
       if (!obj) {
-        // Box yang ≥75% berada di dalam (atau menutupi) track aktif = isi X-ray /
-        // belahan box dari parcel yang SUDAH tertrack — bukan objek baru.
-        // Menjamin 1 parcel = 1 bounding box (tidak pecah per isi X-ray).
+        // Box yang berada di dalam (≥55%) / menutupi (≥75%) track aktif = isi X-ray
+        // atau belahan box dari parcel yang SUDAH tertrack — bukan objek baru.
+        // Ambang dalam longgar (55%): isi parcel yang menonjol keluar outline pun
+        // tidak boleh jadi track kedua (glitch >1 box per parcel).
+        // Ambang tutup tetap ketat: hanya box gabungan yang dianggap sudah terwakili.
         const cand = { x: bx, y: by, width: bw, height: bh };
         const covered = list.some((t) => t.missed <= this.maxMissed
-          && (this.containment(t.box, cand) >= 0.75 || this.containment(cand, t.box) >= 0.75));
+          && (this.containment(t.box, cand) >= 0.55 || this.containment(cand, t.box) >= 0.75));
         if (covered) continue;
         const id = (this.nextId.get(source) ?? 0) + 1;
         this.nextId.set(source, id);
@@ -632,20 +634,31 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         list.push(obj);
       } else {
         matchedTracks.add(obj);
-        // estimasi kecepatan (EMA): dx frame ini, dihaluskan
-        const dx = bx - obj.box.x;
-        obj.vx = obj.vx * 0.6 + dx * 0.4;
-        obj.box = { x: bx, y: by, width: bw, height: bh };
+        // Guard isi X-ray: box baru yang JAUH lebih kecil (≤60% area) dan nyaris
+        // seluruhnya di dalam box track lama = deteksi ISI parcel, bukan outline —
+        // jangan mengecilkan track (box tampilan & crop tetap outline parcel).
+        const cand = { x: bx, y: by, width: bw, height: bh };
+        const prevArea = Math.max(1, obj.box.width * obj.box.height);
+        const isContentShrink = bw * bh < prevArea * 0.6 && this.containment(obj.box, cand) >= 0.7;
+        if (!isContentShrink) {
+          // estimasi kecepatan (EMA): dx frame ini, dihaluskan
+          const dx = bx - obj.box.x;
+          obj.vx = obj.vx * 0.6 + dx * 0.4;
+          obj.box = { x: bx, y: by, width: bw, height: bh };
+          obj.confidence = box.confidence;
+          obj.source = box.source;
+          obj.history = [...obj.history, cand].slice(-3);
+        }
         obj.missed = 0;
         obj.seen += 1;
-        obj.confidence = box.confidence;
-        obj.source = box.source;
-        obj.history = [...obj.history, { x: bx, y: by, width: bw, height: bh }].slice(-3);
       }
       // box output = EMA + kompensasi velocity (tidak telat saat objek bergerak)
       const stable = this.stableBox(obj);
-      // catat tampilan terbaik: penuh di dalam frame & area terbesar → sumber crop capture presisi
-      const fullyInside = stable.x >= this.edgeMargin && stable.y >= this.edgeMargin && stable.x + stable.width <= W - this.edgeMargin && stable.y + stable.height <= H * this.bottomBand - 2;
+      // catat tampilan terbaik: penuh di dalam frame & area terbesar → sumber crop capture presisi.
+      // Sisi BAWAH dilonggarkan sampai tepi frame: parcel besar menempel garis belt
+      // (dasar viewport) tidak akan pernah lolos clamp bottomBand, padahal chrome viewer
+      // sudah dimatikan ROI/auto-ROI — tanpa ini best box hanya terekam dari box ISI parcel.
+      const fullyInside = stable.x >= this.edgeMargin && stable.y >= this.edgeMargin && stable.x + stable.width <= W - this.edgeMargin && stable.y + stable.height <= H - this.edgeMargin;
       if (fullyInside) {
         obj.fullySeen = true;
         if (!obj.bestBox || stable.width * stable.height > obj.bestBox.width * obj.bestBox.height) obj.bestBox = { ...stable };
