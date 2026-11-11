@@ -81,7 +81,11 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   // hanya buang strip paling bawah agar noise 1-2px tidak lolos.
   private readonly bottomBand = 0.985;
   private readonly blobMinArea = 3000;
-  private readonly blobMaxArea = 100000;
+  /** Batas atas blob PROPORSIONAL frame — blob hampir sepanjang frame = noise/gradien,
+   *  tapi parcel besar di tampilan side (dekat/kamera zoom) bisa mendominasi frame.
+   *  Angka mati 100k px terlalu kecil untuk 1280×720 → parcel besar side tak pernah lolos. */
+  private readonly blobMaxAreaRatio = 0.45;
+  private dbgCount = 0;
   private readonly blobMinW = 45;
   private readonly blobMinH = 35;
 
@@ -163,6 +167,11 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       ...yoloBoxes.map((b) => ({ ...b, source: 'yolo' as const })),
     ], gray && blobRes ? { gray, W, bgLevel: blobRes.bgLevel, thByte: blobRes.thByte } : null);
 
+    // DEBUG sementara: rekap tahapan deteksi untuk diagnosis panel side
+    if (source === 'side' && this.dbgCount++ % 8 === 0) {
+      this.logger.log(`[dbg:side] contours=${blobRes?.dbg.contours} keptBlob=${blobRes?.boxes.length} dropArea=${blobRes?.dbg.area} dropEdge=${blobRes?.dbg.edge} dropMinWH=${blobRes?.dbg.minwh} dropRoi=${blobRes?.dbg.roi} yoloRaw=${yoloBoxes.length} nms=${merged.length} bg=${blobRes?.bgLevel} th=${blobRes?.thByte}`);
+    }
+
     // ---------- 4) tracking + trigger ----------
     return this.track(source, merged, W, H);
   }
@@ -226,7 +235,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
    *  level bg diukur dari strip atas frame (baris paling sedikit tertutup objek),
    *  noise bg dihitung dari deviasi strip tsb. Objek = piksel < bg - k*noise.
    *  Lebih presisi dari percentile global: tidak tergeser jumlah objek di frame. */
-  private detectBlobs(gray: Float32Array, W: number, H: number): { boxes: Array<Rect & { confidence: number }>; bgLevel: number; thByte: number } {
+  private detectBlobs(gray: Float32Array, W: number, H: number): { boxes: Array<Rect & { confidence: number }>; bgLevel: number; thByte: number; dbg: { contours: number; area: number; edge: number; minwh: number; roi: number } } {
     const cv = this.cv;
     // ---------- ukur background dari strip atas (8 baris pertama di bawah margin) ----------
     // belt kosong paling atas frame — objek masuk dari kiri dan mengisi tengah/bawah
@@ -255,9 +264,12 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     } else {
       bgLevel = bgMean;
     }
-    // threshold objek: bg - margin. margin = 12 + noise bg, minimal 14 level di bawah bg
-    // → tepi kabur (gradasi perlahan ke bg) tetap lolos, bg bersih pasti ditolak
-    const thByte = Math.max(20, Math.min(235, Math.round(bgLevel - Math.max(14, 12 + bgStd * 2))));
+    // threshold objek: bg - margin. Margin dibatasi [14,30]: strip atas sering
+    // tercemar chrome viewer (bgStd membesar) → tanpa cap, threshold ambruk ~150
+    // dan outline parcel samar tak pernah lolos — hanya inti isi yang pecah jadi
+    // fragment kecil (bounding box side hilang total).
+    const thMargin = Math.max(14, Math.min(30, 12 + bgStd * 2));
+    const thByte = Math.max(20, Math.min(235, Math.round(bgLevel - thMargin)));
 
     const src = new cv.Mat(H, W, cv.CV_8UC1);
     for (let i = 0; i < gray.length; i++) src.data[i] = gray[i] < thByte ? 255 : 0;
@@ -272,7 +284,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     };
     const topBand = bandMean(Math.floor(H * 0.08), Math.floor(H * 0.25));
     const bottomBand = bandMean(Math.floor(H * 0.7), Math.floor(H * 0.92));
-    const hasStrongGradient = Math.abs(topBand - bottomBand) > 30;
+    // 22 (bukan 30): frame side kerap bergradien ringan 22-30 — pakai local contrast
+    // secara konsisten, jangan berkedip antar metode saat nilai melintasi 30 (glitch box).
+    const hasStrongGradient = Math.abs(topBand - bottomBand) > 22;
     let detectSrc = src;
     const adaptiveMats: any[] = [];
     if (hasStrongGradient) {
@@ -303,6 +317,8 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     cv.findContours(opened, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     const out: Array<Rect & { confidence: number }> = [];
     const bottomY = H * this.bottomBand;
+    // DEBUG sementara: hitung di tahap mana blob terbuang (dilog utk source=side)
+    const dbg = { contours: contours.size(), area: 0, edge: 0, minwh: 0, roi: 0, bottom: 0, fullw: 0 };
 
     // ---------- AUTO-ROI: batas area viewport X-ray ----------
     // Toolbar/status bar viewer NYARIS HITAM (< ~45% background) di tepi atas.
@@ -342,13 +358,14 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const rect = cv.boundingRect(contours.get(i));
       let { x, y, width, height } = rect;
       const area = width * height;
-      if (area < this.blobMinArea || area > this.blobMaxArea) continue;
+      const maxArea = W * H * this.blobMaxAreaRatio;
+      if (area < this.blobMinArea || area > maxArea) { dbg.area += 1; continue; }
       // Sidebar/border viewer: blob MENEMPEL tepi kiri/kanan dengan tinggi ≥80%
       // frame = chrome, bukan parcel (parcel tidak pernah full-height menempel tepi).
-      if ((x <= 3 || x + width >= W - 3) && height >= H * 0.8) continue;
-      if (width < this.blobMinW || height < this.blobMinH) continue;
+      if ((x <= 3 || x + width >= W - 3) && height >= H * 0.8) { dbg.edge += 1; continue; }
+      if (width < this.blobMinW || height < this.blobMinH) { dbg.minwh += 1; continue; }
       // Buang blob di area chrome viewer (toolbar/status bar) hasil auto-ROI
-      if (useAutoRoi && (y + height * 0.7 <= topEdge || y >= botEdge)) continue;
+      if (useAutoRoi && (y + height * 0.7 <= topEdge || y >= botEdge)) { dbg.roi += 1; continue; }
       if (useAutoRoi) {
         // clamp ke area viewport supaya bagian yang menyentuh toolbar tidak melebar ke sana
         if (y < topEdge) { height -= topEdge - y; y = topEdge; }
@@ -377,7 +394,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         // bawah
         else if (y + height + GROW <= Math.min(H, bottomY) && rowMean(y + height, x, x + width) < edgeTh) { height += GROW; }
         else if (grown.x === x && grown.y === y && grown.width === width && grown.height === height) break; // berhenti bila tak tumbuh
-        if (width * height > this.blobMaxArea) break;
+        if (width * height > maxArea) break;
       }
       // Parcel berdampingan (dempet) = satu blob lebar. Pecah pada CELAH KOLOM
       // nyata (kolom dengan isi objek < 12%) supaya parcel tunggal yang lebar
@@ -408,14 +425,28 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       if (segStart === -1) segStart = x + width - 1; // trailing gap menutup segmen terakhir
       const lastW = x + width - segStart;
       if (lastW >= this.blobMinW) segments.push({ sx: segStart, sw: lastW });
-      // Celah TIPIS antar segmen = pita terang internal parcel (isi X-ray), bukan
-      // dua parcel — gabung kembali. Dua parcel sungguhan dipisah belt (celah lebar).
+      // Celah antar segmen = pita terang INTERNAL parcel (isi X-ray memisahkan
+      // area gelap) → gabungkan kembali, termasuk celah cukup lebar (parcel pipih
+      // panjang sering terpecah 2-3 box). Dua parcel sungguhan yang dipisah belt
+      // punya koridor SETERANG belt kosong → jangan digabung (cek brightness).
       if (segments.length > 1) {
         const mergedSegs: Array<{ sx: number; sw: number }> = [segments[0]];
         for (let si = 1; si < segments.length; si++) {
           const prev = mergedSegs[mergedSegs.length - 1];
           const gap = segments[si].sx - (prev.sx + prev.sw);
-          if (gap < Math.min(24, Math.round(height * 0.25))) {
+          const mergeGap = Math.min(64, Math.max(24, Math.round(height * 0.8)));
+          let join = gap < mergeGap;
+          if (join && gap >= 4) {
+            // koridor seterang belt kosong (sinar lolos penuh) = dua parcel berbeda
+            const big = { x: prev.sx, y, width: segments[si].sx + segments[si].sw - prev.sx, height };
+            join = !this.brightCorridor(
+              { x: prev.sx, y, width: prev.sw, height },
+              { x: segments[si].sx, y, width: segments[si].sw, height },
+              big,
+              { gray, W, bgLevel, thByte },
+            );
+          }
+          if (join) {
             prev.sw = segments[si].sx + segments[si].sw - prev.sx;
           } else {
             mergedSegs.push(segments[si]);
@@ -465,7 +496,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         }
       }
     }
-    return { boxes: out, bgLevel, thByte };
+    return { boxes: out, bgLevel, thByte, dbg };
   }
 
   /** NMS — deteksi confidence tertinggi dipertahankan */
@@ -604,14 +635,12 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
 
       let obj = this.bestIouMatch(list.filter((t) => !matchedTracks.has(t)), { x: bx, y: by, width: bw, height: bh });
       if (!obj) {
-        // Box yang berada di dalam (≥55%) / menutupi (≥75%) track aktif = isi X-ray
-        // atau belahan box dari parcel yang SUDAH tertrack — bukan objek baru.
-        // Ambang dalam longgar (55%): isi parcel yang menonjol keluar outline pun
-        // tidak boleh jadi track kedua (glitch >1 box per parcel).
-        // Ambang tutup tetap ketat: hanya box gabungan yang dianggap sudah terwakili.
+        // Box yang ≥75% berada di dalam (atau menutupi) track aktif = isi X-ray /
+        // belahan box dari parcel yang SUDAH tertrack — bukan objek baru.
+        // Menjamin 1 parcel = 1 bounding box (tidak pecah per isi X-ray).
         const cand = { x: bx, y: by, width: bw, height: bh };
         const covered = list.some((t) => t.missed <= this.maxMissed
-          && (this.containment(t.box, cand) >= 0.55 || this.containment(cand, t.box) >= 0.75));
+          && (this.containment(t.box, cand) >= 0.75 || this.containment(cand, t.box) >= 0.75));
         if (covered) continue;
         const id = (this.nextId.get(source) ?? 0) + 1;
         this.nextId.set(source, id);
@@ -634,23 +663,15 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         list.push(obj);
       } else {
         matchedTracks.add(obj);
-        // Guard isi X-ray: box baru yang JAUH lebih kecil (≤60% area) dan nyaris
-        // seluruhnya di dalam box track lama = deteksi ISI parcel, bukan outline —
-        // jangan mengecilkan track (box tampilan & crop tetap outline parcel).
-        const cand = { x: bx, y: by, width: bw, height: bh };
-        const prevArea = Math.max(1, obj.box.width * obj.box.height);
-        const isContentShrink = bw * bh < prevArea * 0.6 && this.containment(obj.box, cand) >= 0.7;
-        if (!isContentShrink) {
-          // estimasi kecepatan (EMA): dx frame ini, dihaluskan
-          const dx = bx - obj.box.x;
-          obj.vx = obj.vx * 0.6 + dx * 0.4;
-          obj.box = { x: bx, y: by, width: bw, height: bh };
-          obj.confidence = box.confidence;
-          obj.source = box.source;
-          obj.history = [...obj.history, cand].slice(-3);
-        }
+        // estimasi kecepatan (EMA): dx frame ini, dihaluskan
+        const dx = bx - obj.box.x;
+        obj.vx = obj.vx * 0.6 + dx * 0.4;
+        obj.box = { x: bx, y: by, width: bw, height: bh };
         obj.missed = 0;
         obj.seen += 1;
+        obj.confidence = box.confidence;
+        obj.source = box.source;
+        obj.history = [...obj.history, { x: bx, y: by, width: bw, height: bh }].slice(-3);
       }
       // box output = EMA + kompensasi velocity (tidak telat saat objek bergerak)
       const stable = this.stableBox(obj);
