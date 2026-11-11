@@ -167,13 +167,16 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       ...yoloBoxes.map((b) => ({ ...b, source: 'yolo' as const })),
     ], gray && blobRes ? { gray, W, bgLevel: blobRes.bgLevel, thByte: blobRes.thByte } : null);
 
-    // DEBUG sementara: rekap tahapan deteksi untuk diagnosis panel side
+    // DEBUG sementara: rekap tahapan deteksi — diagnosa konflik blob↔NMS↔tracker
+    const result = this.track(source, merged, W, H);
     if (source === 'side' && this.dbgCount++ % 8 === 0) {
-      this.logger.log(`[dbg:side] contours=${blobRes?.dbg.contours} keptBlob=${blobRes?.boxes.length} dropArea=${blobRes?.dbg.area} dropEdge=${blobRes?.dbg.edge} dropMinWH=${blobRes?.dbg.minwh} dropRoi=${blobRes?.dbg.roi} yoloRaw=${yoloBoxes.length} nms=${merged.length} bg=${blobRes?.bgLevel} th=${blobRes?.thByte}`);
+      const list = this.tracked.get('side') ?? [];
+      const activeN = list.filter((t) => t.missed <= this.maxMissed).length;
+      this.logger.log(`[dbg:side] contours=${blobRes?.dbg.contours} blobRaw=${blobRes?.boxes.length} yoloRaw=${yoloBoxes.length} afterNMS=${merged.length} active=${activeN} mature=${result.length} dropArea=${blobRes?.dbg.area} dropEdge=${blobRes?.dbg.edge} bg=${blobRes?.bgLevel} th=${blobRes?.thByte}`);
     }
 
     // ---------- 4) tracking + trigger ----------
-    return this.track(source, merged, W, H);
+    return result;
   }
 
   /** Inference YOLOv8 pada grayscale (3 kanal identik), letterbox tanpa distorsi */
@@ -354,6 +357,33 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       for (let x = x0; x < x1; x++) s += gray[y * W + x];
       return s / Math.max(1, x1 - x0);
     };
+    // Confidence blob = skor kualitas (bukan 0.25 statis) — NMS butuh pembeda nyata
+    // untuk memilih kandidat yang lebih akurat saat dua blob saling overlap.
+    // Skor = 0.20 base + kegelapan rata-rata piksel mask (parcel nyata lebih gelap)
+    //      + kepadatan mask di dalam box (blob utuh, bukan ceceran noise).
+    const blobQuality = (bx: number, by: number, bw: number, bh: number): number => {
+      const x1q = Math.min(W, bx + bw);
+      const y1q = Math.min(H, by + bh);
+      let nMask = 0;
+      let nTot = 0;
+      let sumG = 0;
+      for (let yy = Math.max(0, by); yy < y1q; yy++) {
+        for (let xx = Math.max(0, bx); xx < x1q; xx++) {
+          const i = yy * W + xx;
+          nTot += 1;
+          if (src.data[i] > 0) {
+            nMask += 1;
+            sumG += gray[i];
+          }
+        }
+      }
+      if (!nTot) return 0.2;
+      const fill = nMask / nTot;
+      const meanG = nMask ? sumG / nMask : bgLevel;
+      const darkRange = Math.max(1, bgLevel - thByte);
+      const dark = Math.max(0, Math.min(1, (bgLevel - meanG) / darkRange));
+      return Math.min(0.5, Math.round((0.2 + 0.14 * dark + 0.08 * fill) * 100) / 100);
+    };
     for (let i = 0; i < contours.size(); i++) {
       const rect = cv.boundingRect(contours.get(i));
       let { x, y, width, height } = rect;
@@ -456,9 +486,9 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         segments.push(...mergedSegs);
       }
       if (segments.length > 1) {
-        for (const s of segments) out.push({ x: s.sx, y, width: s.sw, height, confidence: 0.25 });
+        for (const s of segments) out.push({ x: s.sx, y, width: s.sw, height, confidence: blobQuality(s.sx, y, s.sw, height) });
       } else {
-        out.push({ x, y, width, height, confidence: 0.25 });
+        out.push({ x, y, width, height, confidence: blobQuality(x, y, width, height) });
       }
     }
     src.delete();
@@ -621,6 +651,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private track(source: string, boxes: Array<Rect & { confidence: number; source: 'yolo' | 'blob' }>, W: number, H: number): YoloDetection[] {
     const list = this.tracked.get(source) ?? [];
     const detections: YoloDetection[] = [];
+    const detObj: TrackedObject[] = []; // parallel: reference objek track per detection utk resolusi konflik
     // Satu frame = satu match per track. Tanpa ini dua box berdekatan (mis. hasil
     // split internal satu parcel) cocok ke track yang sama → track lama tetap
     // hidup & tampil tumpang tindih dengan track baru dalam 1 objek.
@@ -699,6 +730,36 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         trigger: false,
         source: box.source,
       });
+      detObj.push(obj);
+    }
+    // Resolusi konflik di tingkat tracker: dua track yang stableBox-nya tumpang
+    // tindih bisa tetap hidup pasca EMA/velocity (titik C diagnosa) — buang yang
+    // berskor lebih rendah dan paksa mati agar tidak kembali hidup lewat EMA.
+    if (detections.length > 1) {
+      const scored = detections.map((d, i) => ({
+        d,
+        obj: detObj[i],
+        score: detObj[i].confidence * Math.min(10, detObj[i].seen) + (detObj[i].fullySeen ? 0.5 : 0),
+      }));
+      scored.sort((a, b) => b.score - a.score);
+      const keep: typeof scored = [];
+      const drop = new Set<number>();
+      for (const cand of scored) {
+        const overlap = keep.some((k) => this.iou(k.d, cand.d) >= 0.4
+          || this.containment(k.d, cand.d) >= 0.6
+          || this.containment(cand.d, k.d) >= 0.6);
+        if (overlap) {
+          drop.add(cand.d.id);
+          cand.obj.missed = this.maxMissed + 1; // force-die supaya tidak hidup dari EMA
+        } else {
+          keep.push(cand);
+        }
+      }
+      if (drop.size) {
+        const kept = detections.filter((d) => !drop.has(d.id));
+        detections.length = 0;
+        for (const d of kept) detections.push(d);
+      }
     }
     for (const t of list) {
       if (!detections.some((d) => d.id === t.id)) t.missed += 1;
