@@ -15,6 +15,9 @@ type Box = {
   captured?: boolean;
   confidence?: number;
   source?: 'yolo' | 'blob';
+  /** Posisi tengah-x relatif (0..1) saat objek keluar/trigger — pairing posisi
+   *  lintas panel (hi-res vs frame) harus pakai rasio, bukan piksel mentah */
+  cxNorm?: number;
 };
 type AwbRow = {
   id: string;
@@ -282,21 +285,39 @@ class PanelEngine {
     }
   }
 
-  /** Frame terbaik objek SIDE yang PUSAT-X-nya paling dekat dgn pusat-x box Top yang sama.
-   *  Pairing posisi belt, bukan urutan indeks: jumlah box side bisa beda dgn top
-   *  (2 parcel dempet di side jadi 1 blob) — indeks bergeser, posisi tidak. */
-  getBestNearX(cxTop: number): { frame: string; box: Box } | undefined {
-    let best: { frame: string; box: Box } | undefined;
+  /** Frame terbaik objek SIDE yang posisi-x relatifnya paling dekat dengan objek top
+   *  yang sama. Pairing posisi belt, bukan urutan indeks: jumlah box side bisa beda
+   *  dgn top (2 parcel dempet di side jadi 1 blob) — indeks bergeser, posisi tidak.
+   *  SEMUA koordinat dinormalisasi ke rasio 0..1 (hi-res vs frame konsisten). */
+  getBestNearX(cxNorm: number): { frame: string; box: Box } | undefined {
+    let nearest: Box | undefined;
     let bestDist = Infinity;
     for (const b of this.boxes) {
-      const d = Math.abs(b.x + b.width / 2 - cxTop);
+      const d = Math.abs((b.x + b.width / 2) / FRAME_WIDTH - cxNorm);
       if (d < bestDist) {
         bestDist = d;
-        const bestFrame = this.bestFrames.get(b.id);
-        if (bestFrame) best = bestFrame; // frame kosong = belum terekam → biarkan fallback terpakai
+        nearest = b;
       }
     }
-    return best;
+    // Terlalu jauh = bukan objek yang sama → lebih baik tanpa pasangan daripada salah
+    if (!nearest || bestDist > 0.25) return undefined;
+    return this.bestFrames.get(nearest.id);
+  }
+
+  /** Frame terbaik TERAKHIR yang masih tersimpan — fallback terakhir sebelum frame
+   *  mentah: tetap best frame + box yang terekam bersama (metode top), bukan
+   *  frame saat ini dengan box arbitrer yang tidak sinkron dengan objeknya. */
+  getLastBest(): { frame: string; box: Box } | undefined {
+    let largest: { frame: string; box: Box } | undefined;
+    let largestArea = 0;
+    for (const entry of this.bestFrames.values()) {
+      const area = entry.box.width * entry.box.height;
+      if (area > largestArea) {
+        largestArea = area;
+        largest = entry;
+      }
+    }
+    return largest;
   }
 
   /** Frame terbaik dari objek SIDE yang sedang aktif, urut kanan→kiri.
@@ -405,9 +426,12 @@ class PanelEngine {
               const best = this.bestFrames.get(trig.id);
               this.bestFrames.delete(trig.id);
               const seq = this.triggerSeq++;
-              this.completedQueue.push({ frame: best?.frame ?? payload, box: best?.box ?? trig, ts: now, seq });
+              // cxNorm (rasio posisi saat trigger) dibawa di box — basis pairing
+              // posisi yang aman lintas ruang koordinat (hi-res top vs frame side)
+              const box: Box = { ...(best?.box ?? trig), cxNorm: (trig.x + trig.width / 2) / FRAME_WIDTH };
+              this.completedQueue.push({ frame: best?.frame ?? payload, box, ts: now, seq });
               if (this.completedQueue.length > 32) this.completedQueue.shift();
-              this.handlers.onTrigger?.(best?.frame ?? payload, best?.box ?? trig, seq);
+              this.handlers.onTrigger?.(best?.frame ?? payload, box, seq);
             }
           } catch {
             this.emptyCycles += 1;
@@ -628,7 +652,6 @@ export function ScanCapture() {
   const [capture] = useMutation(CAPTURE);
   const topFrame = useRef('');
   const sideFrame = useRef('');
-  const sideBox = useRef<Box | undefined>(undefined);
   // Antrian capture diurutkan per indeks objek — capture berdasarkan urutan indeksnya
   const captureQueue = useRef<Array<{ image: string; box?: Box; queueIndex: number }>>([]);
   const pumping = useRef(false);
@@ -733,10 +756,14 @@ export function ScanCapture() {
             await new Promise((resolve) => setTimeout(resolve, 250));
           }
         }
+        // Rantai pasangan side mengikuti METODE TOP: selalu best frame + box yang
+        // terekam BERSAMA pada momen terbaik objek — tidak pernah frame mentah
+        // dengan box arbitrer (sumber crop side tidak fokus selama ini).
         sideBest ??= sideEngine?.getBest(job.queueIndex);
-        if (!sideBest && job.box) sideBest = sideEngine?.getBestNearX(job.box.x + job.box.width / 2);
+        if (!sideBest && job.box?.cxNorm != null) sideBest = sideEngine?.getBestNearX(job.box.cxNorm);
+        sideBest ??= sideEngine?.getLastBest();
         const topImage = await cropToBox(job.image, job.box);
-        const sideImage = await cropToBox(sideBest?.frame ?? sideFrame.current, sideBest?.box ?? sideBox.current);
+        const sideImage = await cropToBox(sideBest?.frame ?? sideFrame.current, sideBest?.box);
         let sent = false;
         for (let attempt = 0; attempt < 3 && !sent; attempt += 1) {
           try {
@@ -769,9 +796,6 @@ export function ScanCapture() {
           onTrigger={() => {}}
           onFrame={(image) => {
             sideFrame.current = image;
-            // box terakhir yang terdeteksi di panel samping → crop fit saat capture
-            const e = engines.get('side');
-            sideBox.current = e?.boxes?.[0];
           }}
         />
       </View>
