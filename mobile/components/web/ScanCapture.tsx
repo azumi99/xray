@@ -12,6 +12,7 @@ type Box = {
   width: number;
   height: number;
   trigger?: boolean;
+  captured?: boolean;
   confidence?: number;
   source?: 'yolo' | 'blob';
 };
@@ -541,6 +542,9 @@ function CapturePanel({
           const visualIndex = [...snap.boxes]
             .sort((a, z) => (z.x + z.width / 2) - (a.x + a.width / 2))
             .findIndex((x) => x.id === b.id);
+          // trigger = MOMEN capture — hijau hanya sebagai EFEK kilat saat capture
+          // berjalan (±1 detik, mengikuti anti-flicker), lalu kembali biru
+          const isCaptured = Boolean(b.trigger);
           return (
             <View
               key={`${labelVersion}-${i}`}
@@ -551,10 +555,10 @@ function CapturePanel({
                 width: `${(b.width / FRAME_WIDTH) * 100}%`,
                 height: `${(b.height / FRAME_HEIGHT) * 100}%`,
                 borderWidth: 3,
-                borderColor: b.trigger ? '#4ADE80' : '#38BDF8',
+                borderColor: isCaptured ? '#4ADE80' : '#38BDF8',
               }}
             >
-              <Text style={{ color: '#fff', backgroundColor: b.trigger ? '#16A34A' : '#0284C7', paddingHorizontal: 5 }}>
+              <Text style={{ color: '#fff', backgroundColor: isCaptured ? '#16A34A' : '#0284C7', paddingHorizontal: 5 }}>
                 {`#${visualIndex + 1}`}
               </Text>
             </View>

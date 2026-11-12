@@ -22,6 +22,8 @@ export type YoloDetection = {
   height: number;
   confidence: number;
   trigger: boolean;
+  /** sudah di-capture — dipertahankan selama track hidup (box tetap hijau di UI) */
+  captured?: boolean;
   source: 'yolo' | 'blob';
 };
 
@@ -70,12 +72,14 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   /** lahir menyentuh strip KIRI frame = objek BARU keluar/masuk dari kiri
    *  (pola cv-service StripTracker: parcel baru masuk dari tepi kiri);
    *  objek yang sejak awal ada di tengah/kanan layar = baseline lama, tidak boleh di-capture */
-  private readonly enterLeftRatio = 0.15;
+  private readonly enterLeftRatio = 0.3;
   /** tepi kanan box melewati strip kiri 8% frame = objek sudah keluar sisi kiri — LEWATI, jangan capture */
   private readonly exitEdgeRatio = 0.08;
   /** celah kosong (background) di kiri objek — konfirmasi "fully entered" ala cv-service
-   *  min_clear_gap: kolom background bersih antara tepi kiri frame dan objek */
-  private readonly minClearGapCols = 6;
+   *  min_clear_gap: kolom background bersih antara tepi kiri frame dan objek.
+   *  26px (bukan 6): objek harus benar-benar MENJAUH dari tepi kiri sebelum capture —
+   *  box baru 12px lewat tepi masih berisiko blob separuh yang belum masuk penuh. */
+  private readonly minClearGapCols = 26;
   private readonly edgeMargin = 6; // objek dianggap penuh di dalam frame bila box menjauh tepi sekian px
   // Status bar viewer kini ditangani ROI (mask frontend) — guard longgar,
   // hanya buang strip paling bawah agar noise 1-2px tidak lolos.
@@ -541,15 +545,26 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     // split internal satu parcel) cocok ke track yang sama → track lama tetap
     // hidup & tampil tumpang tindih dengan track baru dalam 1 objek.
     const matchedTracks = new Set<TrackedObject>();
+    // Batas bawah area deteksi (di atas control panel X-ray) — SEMUA box (YOLO & blob)
+    // di-clamp ke sini supaya parcel yang duduk di garis belt tetap lolos fullyInside.
+    const maxY = H * this.bottomBand;
     for (const box of boxes) {
       // clip ke frame utk display
       const bx = Math.max(0, box.x);
       const by = Math.max(0, box.y);
       const bw = Math.min(box.width, W - bx);
-      const bh = Math.min(box.height, H - by);
+      const bh = Math.min(box.height, maxY - by);
       if (bw < 10 || bh < 10) continue;
 
       let obj = this.bestIouMatch(list.filter((t) => !matchedTracks.has(t)), { x: bx, y: by, width: bw, height: bh });
+      // Objek BARU tidak boleh mewarisi track lama yang SUDAH captured: belt satu
+      // jalur membuat objek berikutnya menempati posisi track sebelumnya (match
+      // fallback center-distance) → langsung hijau tanpa pernah di-capture sendiri.
+      // Deteksi di strip masuk kiri yang cocok ke track captured + sudah hilang
+      // beberapa frame = objek baru → buat track baru.
+      if (obj && obj.captured && obj.missed >= 2 && bx <= W * this.enterLeftRatio) {
+        obj = null;
+      }
       if (!obj) {
         const id = (this.nextId.get(source) ?? 0) + 1;
         this.nextId.set(source, id);
@@ -585,7 +600,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       // box output = EMA + kompensasi velocity (tidak telat saat objek bergerak)
       const stable = this.stableBox(obj);
       // catat tampilan terbaik: penuh di dalam frame & area terbesar → sumber crop capture presisi
-      const fullyInside = stable.x >= this.edgeMargin && stable.y >= this.edgeMargin && stable.x + stable.width <= W - this.edgeMargin && stable.y + stable.height <= H * this.bottomBand - 2;
+      const fullyInside = stable.x >= this.edgeMargin && stable.y >= this.edgeMargin && stable.x + stable.width <= W - this.edgeMargin && stable.y + stable.height <= maxY + 1;
       if (fullyInside) {
         obj.fullySeen = true;
         if (!obj.bestBox || stable.width * stable.height > obj.bestBox.width * obj.bestBox.height) obj.bestBox = { ...stable };
@@ -603,6 +618,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         height: Math.round(stable.height),
         confidence: Number(box.confidence.toFixed(2)),
         trigger: false,
+        captured: obj.captured,
         source: box.source,
       });
     }
@@ -618,10 +634,17 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const fullyInside = b.x >= this.edgeMargin
         && b.y >= this.edgeMargin
         && b.x + b.width <= W - this.edgeMargin
-        && b.y + b.height <= H * this.bottomBand - 2;
+        && b.y + b.height <= maxY + 1;
       const leftGap = b.x >= this.edgeMargin + this.minClearGapCols;
       if (!fullyInside || !leftGap) continue;
       t.captured = true;
+      // Tandai detection yang sudah ada (jangan dobel box di layar)
+      const existing = detections.find((d) => d.id === t.id);
+      if (existing) {
+        existing.trigger = true;
+        existing.captured = true;
+        continue;
+      }
       detections.push({
         id: t.id,
         x: Math.round(b.x),
@@ -630,6 +653,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         height: Math.round(b.height),
         confidence: Number(t.confidence.toFixed(2)),
         trigger: true,
+        captured: true,
         source: t.source,
       });
     }
