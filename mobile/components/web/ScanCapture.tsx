@@ -684,17 +684,22 @@ export function ScanCapture() {
     if (!box || !frame) return Promise.resolve(frame);
     try {
       const img = new Image();
-      const marginX = 0.04;
-      const marginY = 0.15;
+      // Margin presisi: cukup supaya outline parcel yang samar tidak terpotong,
+      // tapi kecil supaya objek sebelah tidak ikut masuk crop. Floor absolut
+      // untuk parcel kecil yang persentasenya menghasilkan padding terlalu tipis.
+      const marginX = 0.08;
+      const marginY = 0.18;
+      const padX = Math.max(box.width * marginX, 16);
+      const padY = Math.max(box.height * marginY, 16);
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
           const iw = img.naturalWidth || FRAME_WIDTH;
           const ih = img.naturalHeight || FRAME_HEIGHT;
-          const x = Math.max(0, box.x - box.width * marginX);
-          const y = Math.max(0, box.y - box.height * marginY);
-          const w = Math.max(1, Math.min(iw - x, box.width * (1 + marginX * 2)));
-          const h = Math.max(1, Math.min(ih - y, box.height * (1 + marginY * 2)));
+          const x = Math.max(0, box.x - padX);
+          const y = Math.max(0, box.y - padY);
+          const w = Math.max(1, Math.min(iw - x, box.width + padX * 2));
+          const h = Math.max(1, Math.min(ih - y, box.height + padY * 2));
           const can = document.createElement('canvas');
           can.width = Math.round(w);
           can.height = Math.round(h);

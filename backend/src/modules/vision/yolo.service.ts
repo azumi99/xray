@@ -679,14 +679,21 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private stableBox(obj: TrackedObject): Rect {
     const h = obj.history;
     if (h.length === 0) return obj.box;
-    const ema = h.reduce((acc, b, i) => ({
-      x: (acc.x * i + b.x) / (i + 1),
-      y: (acc.y * i + b.y) / (i + 1),
-      width: (acc.width * i + b.width) / (i + 1),
-      height: (acc.height * i + b.height) / (i + 1),
-    }), { x: 0, y: 0, width: 0, height: 0 });
-    // kompensasi 1 frame ke depan sesuai kecepatan → box tidak tertinggal di belakang objek
-    return { x: ema.x + obj.vx, y: ema.y, width: ema.width, height: ema.height };
+    // EMA berbobot (alpha 0.6, frame terbaru dominan) — jauh lebih sedikit lag
+    // saat parcel bergerak di belt dibanding average equal-weight 3 frame.
+    const alpha = 0.6;
+    let sx = h[0].x;
+    let sy = h[0].y;
+    let sw = h[0].width;
+    let sh = h[0].height;
+    for (let i = 1; i < h.length; i += 1) {
+      sx = alpha * h[i].x + (1 - alpha) * sx;
+      sy = alpha * h[i].y + (1 - alpha) * sy;
+      sw = alpha * h[i].width + (1 - alpha) * sw;
+      sh = alpha * h[i].height + (1 - alpha) * sh;
+    }
+    // kompensasi 1 frame ke depan sesuai kecepatan → box menempel pada objek bergerak
+    return { x: sx + obj.vx, y: sy, width: sw, height: sh };
   }
 
   /** Tracking IoU lintas frame — capture sekali saat paket baru dari kiri sudah full terlihat. */
