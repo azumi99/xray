@@ -87,7 +87,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private readonly blobMaxAreaRatio = 0.45;
   private dbgCount = 0;
   private readonly blobMinW = 45;
-  private readonly blobMinH = 35;
+  private readonly blobMinH = 22;
 
   async onModuleInit() {
     const model = process.env.YOLO_MODEL_PATH ?? join(process.cwd(), 'models', 'yolo.onnx');
@@ -420,7 +420,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       //      parcel antara isi dan dinding, step-by-step berhenti sebelum sampai;
       //      scan ke luar sampai MAXG mencari strip tepi gelap dan loncat ke sana.
       const GROW = 4;
-      const MAXG = 40; // sebelumnya 24 — parcel besar punya rongga internal + dinding jauh
+      const MAXG = 56; // sebelumnya 40 — parcel besar dindingnya bisa jauh dari inti isi
       for (let g = 0; g < MAXG; g += GROW) {
         const grown: Rect = { x, y, width, height };
         if (x - GROW >= 0 && colMean(x - GROW, y, y + height) < edgeTh) { x -= GROW; width += GROW; }

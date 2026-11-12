@@ -688,9 +688,9 @@ export function ScanCapture() {
       // tapi kecil supaya objek sebelah tidak ikut masuk crop. Floor absolut
       // untuk parcel kecil yang persentasenya menghasilkan padding terlalu tipis.
       const marginX = 0.08;
-      const marginY = 0.18;
+      const marginY = 0.22;
       const padX = Math.max(box.width * marginX, 16);
-      const padY = Math.max(box.height * marginY, 16);
+      const padY = Math.max(box.height * marginY, 30);
       // Crop pada UKURAN NATURAL gambar (frame hi-res) — tanpa downscale, hasil maksimal
       return new Promise<string>((resolve) => {
         img.onload = () => {
