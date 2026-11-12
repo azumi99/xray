@@ -79,11 +79,13 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   private readonly edgeMargin = 6; // objek dianggap penuh di dalam frame bila box menjauh tepi sekian px
   // Status bar viewer kini ditangani ROI (mask frontend) — guard longgar,
   // hanya buang strip paling bawah agar noise 1-2px tidak lolos.
-  private readonly bottomBand = 0.985;
+  private readonly bottomBand = 0.86;
   private readonly blobMinArea = 3000;
-  private readonly blobMaxArea = 100000;
+  /** Batas atas blob PROPORSIONAL frame (45%) — angka mati 100k px terlalu kecil
+   *  untuk 1280×720, parcel besar di tampak samping tak pernah lolos. */
+  private readonly blobMaxAreaRatio = 0.45;
   private readonly blobMinW = 45;
-  private readonly blobMinH = 35;
+  private readonly blobMinH = 25;
 
   async onModuleInit() {
     const model = process.env.YOLO_MODEL_PATH ?? join(process.cwd(), 'models', 'yolo.onnx');
@@ -301,6 +303,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     cv.findContours(opened, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     const out: Array<Rect & { confidence: number }> = [];
     const bottomY = H * this.bottomBand;
+    const maxArea = W * H * this.blobMaxAreaRatio;
 
     // ---------- AUTO-ROI: batas area viewport X-ray ----------
     // Toolbar/status bar viewer NYARIS HITAM (< ~45% background) di tepi atas.
@@ -340,7 +343,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const rect = cv.boundingRect(contours.get(i));
       let { x, y, width, height } = rect;
       const area = width * height;
-      if (area < this.blobMinArea || area > this.blobMaxArea) continue;
+      if (area < this.blobMinArea || area > maxArea) continue;
       // Sidebar/border viewer: blob MENEMPEL tepi kiri/kanan dengan tinggi ≥80%
       // frame = chrome, bukan parcel (parcel tidak pernah full-height menempel tepi).
       if ((x <= 3 || x + width >= W - 3) && height >= H * 0.8) continue;
@@ -375,7 +378,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         // bawah
         else if (y + height + GROW <= Math.min(H, bottomY) && rowMean(y + height, x, x + width) < edgeTh) { height += GROW; }
         else if (grown.x === x && grown.y === y && grown.width === width && grown.height === height) break; // berhenti bila tak tumbuh
-        if (width * height > this.blobMaxArea) break;
+        if (width * height > maxArea) break;
       }
       // Parcel berdampingan (dempet) = satu blob lebar. Pecah pada CELAH KOLOM
       // nyata (kolom dengan isi objek < 12%) supaya parcel tunggal yang lebar
