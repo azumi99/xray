@@ -80,7 +80,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
   // Status bar viewer kini ditangani ROI (mask frontend) — guard longgar,
   // hanya buang strip paling bawah agar noise 1-2px tidak lolos.
   private readonly bottomBand = 0.985;
-  private readonly blobMinArea = 3000;
+  private readonly blobMinArea = 2000;
   /** Batas atas blob PROPORSIONAL frame — blob hampir sepanjang frame = noise/gradien,
    *  tapi parcel besar di tampilan side (dekat/kamera zoom) bisa mendominasi frame.
    *  Angka mati 100k px terlalu kecil untuk 1280×720 → parcel besar side tak pernah lolos. */
@@ -346,7 +346,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const useAutoRoi = botEdge - topEdge > H * 0.45;
     // edge threshold utk pertumbuhan box: antara blob-th dan background —
     // tepi kabur masih "lebih gelap dari background" meski lolos dari blob threshold
-    const edgeTh = thByte + 0.45 * (bgLevel - thByte);
+    // edgeTh lebih DEKAT ke bg (0.65 × selisih) — dinding karton/plastik parcel hanya
+    // sedikit menyerap sinar (nyaris transparan). Tanpa ambang longgar ini, growth
+    // berhenti sebelum menyentuh outline → box jatuh di INTI ISI, bukan parcel.
+    const edgeTh = thByte + 0.65 * (bgLevel - thByte);
     const colMean = (x: number, y0: number, y1: number) => {
       let s = 0;
       for (let y = y0; y < y1; y++) s += gray[y * W + x];
@@ -410,21 +413,57 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
         if (width * height < this.blobMinArea) continue;
       }
       if (x <= 2 && x + width >= W - 2) continue; // noise full-width
-      // --- adaptive edge growth: perluas box selama strip tepi masih < edgeTh (tepi kabur) ---
-      const GROW = 4; // px per langkah
-      const MAXG = 24; // batas total pertumbuhan per sisi
+      // --- Outline reach: perluas box ke dinding parcel yang samar ---
+      // Dua tahap:
+      //   1) Pertumbuhan BERTAHAP (gap kecil antara isi dan dinding langsung tertutup)
+      //   2) Pencarian LOMPAT setelah tahap 1 — kalau ada rongga udara terang di dalam
+      //      parcel antara isi dan dinding, step-by-step berhenti sebelum sampai;
+      //      scan ke luar sampai MAXG mencari strip tepi gelap dan loncat ke sana.
+      const GROW = 4;
+      const MAXG = 40; // sebelumnya 24 — parcel besar punya rongga internal + dinding jauh
       for (let g = 0; g < MAXG; g += GROW) {
         const grown: Rect = { x, y, width, height };
-        // kiri: kolom di kiri box lebih gelap dari edgeTh → geser keluar
         if (x - GROW >= 0 && colMean(x - GROW, y, y + height) < edgeTh) { x -= GROW; width += GROW; }
-        // kanan
         else if (x + width + GROW <= W && colMean(x + width, y, y + height) < edgeTh) { width += GROW; }
-        // atas
         else if (y - GROW >= 0 && rowMean(y - GROW, x, x + width) < edgeTh) { y -= GROW; height += GROW; }
-        // bawah
         else if (y + height + GROW <= Math.min(H, bottomY) && rowMean(y + height, x, x + width) < edgeTh) { height += GROW; }
-        else if (grown.x === x && grown.y === y && grown.width === width && grown.height === height) break; // berhenti bila tak tumbuh
+        else if (grown.x === x && grown.y === y && grown.width === width && grown.height === height) break;
         if (width * height > maxArea) break;
+      }
+      // Pencarian lompat (bounded) — temukan strip tepi parcel yang terpisah rongga terang
+      const findDarkLeft = () => {
+        for (let d = GROW; d <= MAXG && x - d >= 0; d += GROW) {
+          if (colMean(x - d, y, y + height) < edgeTh) return d;
+        }
+        return 0;
+      };
+      const findDarkRight = () => {
+        for (let d = GROW; d <= MAXG && x + width + d <= W; d += GROW) {
+          if (colMean(x + width + d - 1, y, y + height) < edgeTh) return d;
+        }
+        return 0;
+      };
+      const findDarkTop = () => {
+        for (let d = GROW; d <= MAXG && y - d >= 0; d += GROW) {
+          if (rowMean(y - d, x, x + width) < edgeTh) return d;
+        }
+        return 0;
+      };
+      const findDarkBottom = () => {
+        for (let d = GROW; d <= MAXG && y + height + d <= Math.min(H, bottomY); d += GROW) {
+          if (rowMean(y + height + d - 1, x, x + width) < edgeTh) return d;
+        }
+        return 0;
+      };
+      const jL = findDarkLeft(); if (jL) { x -= jL; width += jL; }
+      const jR = findDarkRight(); if (jR) width += jR;
+      const jT = findDarkTop(); if (jT) { y -= jT; height += jT; }
+      const jB = findDarkBottom(); if (jB) height += jB;
+      if (width * height > maxArea) {
+        // batasi pertumbuhan — kalau membengkak melewati batas, trim seimbang
+        const over = (width * height - maxArea) / (width * height);
+        width = Math.max(this.blobMinW, Math.round(width * (1 - over / 2)));
+        height = Math.max(this.blobMinH, Math.round(height * (1 - over / 2)));
       }
       // Parcel berdampingan (dempet) = satu blob lebar. Pecah pada CELAH KOLOM
       // nyata (kolom dengan isi objek < 12%) supaya parcel tunggal yang lebar
@@ -606,7 +645,10 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     }
     if (!n) return false;
     const mean = s / n;
-    return mean >= bg.bgLevel - 0.35 * (bg.bgLevel - bg.thByte);
+    // Ambang lebih longgar: kalau korridor sekadar lebih terang dari separuh jalan
+    // bg↔object, anggap "belt terlihat" (parcel terpisah) → JANGAN gabung.
+    // Hanya korridor jelas gelap (isi X-ray padat) yang lolos untuk digabung.
+    return mean >= bg.bgLevel - 0.55 * (bg.bgLevel - bg.thByte);
   }
 
   /** rasio area item yang berada di dalam box ref (0..1) */
@@ -745,9 +787,12 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
       const keep: typeof scored = [];
       const drop = new Set<number>();
       for (const cand of scored) {
+        // containment 0.75 (bukan 0.6): hanya singkirkan track yang NYARIS SEPENUHNYA
+        // berada di dalam/menutupi track lain — overlap ringan antar parcel X-ray
+        // dalam proyeksi gambar tidak boleh ikut dibunuh.
         const overlap = keep.some((k) => this.iou(k.d, cand.d) >= 0.4
-          || this.containment(k.d, cand.d) >= 0.6
-          || this.containment(cand.d, k.d) >= 0.6);
+          || this.containment(k.d, cand.d) >= 0.75
+          || this.containment(cand.d, k.d) >= 0.75);
         if (overlap) {
           drop.add(cand.d.id);
           cand.obj.missed = this.maxMissed + 1; // force-die supaya tidak hidup dari EMA
