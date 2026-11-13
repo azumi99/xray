@@ -148,18 +148,18 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     // ---------- 1) deteksi YOLO dengan BOTTOM PADDING ----------
     // Objek yang menempel dasar frame sering gagal terdeteksi YOLO (tidak pernah
     // dilatih edge-bawah). Trik: tambah strip hitam di bawah frame sebelum inferensi
-    // → objek "tidak menempel" menurut model; box digeser balik setelahnya.
+    // → objek "tidak menempel" menurut model. Padding bawah tidak menggeser y.
     const grayBase = gray ?? grayFromRgb(data, W, H);
     const PAD = Math.round(H * 0.25);
     const grayPadded = new Float32Array((H + PAD) * W);
     grayPadded.set(grayBase);
     const yoloBoxes = (await this.inferYolo(grayPadded, W, H + PAD)).map((b) => {
-      const y = Math.max(0, b.y - PAD);
-      return { ...b, y, height: Math.min(H - y, b.height) };
-    });
+      const y = Math.max(0, b.y);
+      return { ...b, y, height: Math.max(0, Math.min(H, b.y + b.height) - y) };
+    }).filter((b) => b.height > 0);
 
     // ---------- 2) blob gelap (assist domain X-ray) ----------
-    const blobBoxes = gray ? this.detectBlobs(gray, W, H) : [];
+    const blobBoxes = gray ? this.detectBlobs(gray, W, H, source) : [];
 
     // ---------- 3) gabung + NMS ----------
     const merged = this.nms([
@@ -230,7 +230,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
    *  level bg diukur dari strip atas frame (baris paling sedikit tertutup objek),
    *  noise bg dihitung dari deviasi strip tsb. Objek = piksel < bg - k*noise.
    *  Lebih presisi dari percentile global: tidak tergeser jumlah objek di frame. */
-  private detectBlobs(gray: Float32Array, W: number, H: number): Array<Rect & { confidence: number }> {
+  private detectBlobs(gray: Float32Array, W: number, H: number, source: string): Array<Rect & { confidence: number }> {
     const cv = this.cv;
     // ---------- ukur background dari strip atas (8 baris pertama di bawah margin) ----------
     // belt kosong paling atas frame — objek masuk dari kiri dan mengisi tengah/bawah
@@ -306,7 +306,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const hierarchy = new cv.Mat();
     cv.findContours(opened, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
     const out: Array<Rect & { confidence: number }> = [];
-    const bottomY = H * this.bottomBand;
+    const bottomY = H * (source === 'side' ? 0.985 : this.bottomBand);
     const maxArea = W * H * this.blobMaxAreaRatio;
 
     // ---------- AUTO-ROI: batas area viewport X-ray ----------
@@ -547,7 +547,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
     const matchedTracks = new Set<TrackedObject>();
     // Batas bawah area deteksi (di atas control panel X-ray) — SEMUA box (YOLO & blob)
     // di-clamp ke sini supaya parcel yang duduk di garis belt tetap lolos fullyInside.
-    const maxY = H * this.bottomBand;
+    const maxY = H * (source === 'side' ? 0.985 : this.bottomBand);
     for (const box of boxes) {
       // clip ke frame utk display
       const bx = Math.max(0, box.x);
