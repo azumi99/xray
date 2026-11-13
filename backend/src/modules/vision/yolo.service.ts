@@ -585,6 +585,7 @@ export class YoloService implements OnModuleInit, OnModuleDestroy {
           fullySeen: false,
         };
         list.push(obj);
+        matchedTracks.add(obj);
       } else {
         matchedTracks.add(obj);
         // estimasi kecepatan (EMA): dx frame ini, dihaluskan

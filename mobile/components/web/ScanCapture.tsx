@@ -402,7 +402,7 @@ class PanelEngine {
               const dClamped: Box = { ...d, height: Math.min(d.height, FRAME_HEIGHT - d.y) };
               const prev = this.bestFrames.get(d.id);
               if (inside && (!prev || dClamped.width * dClamped.height > (prev.box.width * prev.box.height) / Math.max(1, prev.scale ?? BOX_SCALE) ** 2)) {
-                const hi = this.hiresFrame(this.video);
+                const hi = this.key === 'side' ? { data: payload, width: FRAME_WIDTH } : this.hiresFrame(this.video);
                 if (hi) {
                   const sf = hi.width / FRAME_WIDTH;
                   this.bestFrames.set(d.id, { frame: hi.data, box: { ...dClamped, x: dClamped.x * sf, y: dClamped.y * sf, width: dClamped.width * sf, height: dClamped.height * sf }, scale: sf });
