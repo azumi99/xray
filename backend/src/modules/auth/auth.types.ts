@@ -6,6 +6,8 @@ export class AuthUser {
   @Field(() => ID) id!: number;
   @Field() name!: string;
   @Field() email!: string;
+  /** Hak akses gudang: bgd | cas | all */
+  @Field() warehouse!: string;
 }
 
 @ObjectType()
