@@ -159,7 +159,7 @@ export function AwbDetailScreen({ id, warehouse = 'bgd' }: { id?: string; wareho
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#0B1220' : '#F8FAFC' }}>
       <DashboardSidebar
         active="awb"
-        onNavigate={(key) => router.push(key === 'dashboard' ? `/dashboard/${warehouse}/dashboard` : (`/dashboard/${warehouse}/${key}` as never))}
+        onNavigate={(key) => router.push(key === 'dashboard' ? `/dashboard/${warehouse}` : (`/dashboard/${warehouse}/${key}` as never))}
         onLogout={async () => {
           await logoutAPI();
           router.replace('/(auth)/login');

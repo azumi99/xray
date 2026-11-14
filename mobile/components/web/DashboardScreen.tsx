@@ -207,7 +207,7 @@ export function DashboardScreen({ section, warehouse = 'bgd' }: { section: 'dash
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#0B1220' : '#F8FAFC' }}>
       <DashboardSidebar
         active={section}
-        onNavigate={(key) => router.push(key === 'dashboard' ? `/dashboard/${warehouse}/dashboard` : (`/dashboard/${warehouse}/${key}` as never))}
+        onNavigate={(key) => router.push(key === 'dashboard' ? `/dashboard/${warehouse}` : (`/dashboard/${warehouse}/${key}` as never))}
         onLogout={handleLogout}
       />
 
