@@ -663,7 +663,7 @@ export function ScanCapture({ warehouse = 'bgd' }: { warehouse?: 'bgd' | 'cas' }
   const { theme } = useThemeStore();
   const isDark = theme === 'dark';
 
-  // Data AWB via SSE realtime — satu koneksi bersama (lihat awbEvents.ts)
+  // Data AWB via SSE realtime — satu koneksi bersama PER GUDANG (lihat awbEvents.ts)
   useEffect(
     () =>
       subscribeAwbSnapshot((payload) => {
@@ -688,8 +688,8 @@ export function ScanCapture({ warehouse = 'bgd' }: { warehouse?: 'bgd' | 'cas' }
             setRowAnim((ra) => ({ entering: ra.entering, exiting: new Set([...ra.exiting].filter((x) => x !== id)) }));
           }, 600));
         }
-      }),
-    [],
+      }, warehouse),
+    [warehouse],
   );
 
   // Waiting list urutan ascending berdasarkan waktu (paling lama diproses lebih dulu)
