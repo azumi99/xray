@@ -11,9 +11,8 @@ export default function DashboardSectionScreen() {
   if (section === 'bgd' || section === 'cas') {
     return <DashboardScreen section="dashboard" warehouse={section} />;
   }
-  if (section === 'dashboard') {
-    return <Redirect href="/dashboard/bgd" />;
+  if ((VALID as readonly string[]).includes(section ?? '')) {
+    return <DashboardScreen section={section as Section} warehouse="bgd" />;
   }
-  const active = (VALID as readonly string[]).includes(section ?? '') ? (section as Section) : 'awb';
-  return <DashboardScreen section={active} warehouse="bgd" />;
+  return <Redirect href="/dashboard" />;
 }
