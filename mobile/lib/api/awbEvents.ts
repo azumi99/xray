@@ -4,6 +4,7 @@
  */
 import EventSource from 'react-native-sse';
 import { API_ORIGIN } from '@/constants/api';
+import { getGraphqlWarehouse } from '@/graphql/client';
 
 export type AwbRowSnapshot = {
   id: string;
@@ -24,11 +25,20 @@ type Listener = (payload: AwbSnapshot) => void;
 let source: EventSource<'snapshot'> | null = null;
 const listeners = new Set<Listener>();
 
-const EVENTS_URL = `${API_ORIGIN}/api/awb-events`;
+const eventsUrl = () => `${API_ORIGIN}/api/awb-events?wh=${getGraphqlWarehouse()}`;
+
+/** Ganti koneksi SSE ke gudang aktif — dipanggil saat login/logout user berbeda. */
+export function resetAwbSnapshotSource() {
+  if (source) {
+    source.close();
+    source = null;
+  }
+  if (listeners.size > 0) ensureSource();
+}
 
 function ensureSource() {
   if (source) return;
-  source = new EventSource<'snapshot'>(EVENTS_URL, { timeout: 0, pollingInterval: 0 });
+  source = new EventSource<'snapshot'>(eventsUrl(), { timeout: 0, pollingInterval: 0 });
   source.addEventListener('snapshot', (event) => {
     try {
       const raw = JSON.parse((event as { data?: string }).data ?? '{}');

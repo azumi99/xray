@@ -18,6 +18,14 @@ type AuthState = {
   logout: () => void;
 };
 
+/** Sinkronkan gudang aktif (header x-warehouse + SSE) dengan user yang login.
+ *  'all' → bgd (default). Dipanggil login/logout/refresh me. */
+const applyWarehouse = (user?: { warehouse?: string } | null) => {
+  const wh = user?.warehouse && user.warehouse !== 'all' ? user.warehouse : 'bgd';
+  void import('@/graphql/client').then(({ setGraphqlWarehouse }) => setGraphqlWarehouse(wh));
+  void import('@/lib/api/awbEvents').then(({ resetAwbSnapshotSource }) => resetAwbSnapshotSource());
+};
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -25,10 +33,15 @@ export const useAuthStore = create<AuthState>()(
       user: null,
       isLoading: true,
 
-      login: (token: string, user?: { name?: string; id?: number }) =>
-        set({ session: token, user: user || null, isLoading: false }),
+      login: (token: string, user?: { name?: string; id?: number }) => {
+        set({ session: token, user: user || null, isLoading: false });
+        applyWarehouse(user);
+      },
 
-      logout: () => set({ session: null, user: null, isLoading: false }),
+      logout: () => {
+        set({ session: null, user: null, isLoading: false });
+        applyWarehouse(null);
+      },
     }),
     {
       name: "auth-storage",
@@ -38,13 +51,17 @@ export const useAuthStore = create<AuthState>()(
 
       onRehydrateStorage: () => async (state) => {
         useAuthStore.setState({ isLoading: false });
+        // Sesi lama dengan user tersimpan: langsung sinkronkan gudang aktif
+        if (state?.user) applyWarehouse(state.user);
         // Session ada tapi user belum terisi (login lama): ambil dari backend via query me
         if (state?.session && !state?.user) {
           try {
             const { getCurrentUser } = await import("../api/authAPI");
             const me = await getCurrentUser();
             if (me) {
-              useAuthStore.setState({ user: { id: Number(me.id), name: me.name, email: me.email, warehouse: me.warehouse ?? 'bgd' } });
+              const user = { id: Number(me.id), name: me.name, email: me.email, warehouse: me.warehouse ?? 'bgd' };
+              useAuthStore.setState({ user });
+              applyWarehouse(user);
             }
           } catch {
             // token invalid biarkan apa adanya

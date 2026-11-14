@@ -16,6 +16,9 @@ let currentWarehouse = 'bgd';
 export function setGraphqlWarehouse(warehouse: string) {
   currentWarehouse = warehouse === 'cas' ? 'cas' : 'bgd';
 }
+export function getGraphqlWarehouse(): string {
+  return currentWarehouse;
+}
 
 // HTTP link to GraphQL server
 const httpLink = createHttpLink({
