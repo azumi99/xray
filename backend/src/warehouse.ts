@@ -24,6 +24,11 @@ export function warehouseMiddleware(req: Request, res: Response, next: NextFunct
       .then((payload) => {
         const allowed = String((payload as { wh?: string }).wh ?? '');
         if (allowed && allowed !== 'all' && allowed !== warehouse) {
+          // Header CORS wajib: middleware ini berjalan SEBELUM cors milik Nest,
+          // tanpa ini browser memblokir respons error ("Failed to fetch").
+          const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '*';
+          res.setHeader('Access-Control-Allow-Origin', origin);
+          res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-warehouse');
           res.status(403).json({
             statusCode: 403,
             message: `Akses gudang ${warehouse.toUpperCase()} tidak diizinkan untuk user ini (hak: ${allowed.toUpperCase()})`,

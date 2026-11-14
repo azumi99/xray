@@ -49,9 +49,13 @@ export const login = async (credentials: LoginCredentials): Promise<LoginRespons
 };
 
 export const logoutAPI = async (): Promise<LogoutResponse> => {
+  // Logout server best-effort: kegagalan jaringan/403 tidak boleh menghalangi
+  // pembersihan sesi lokal — user tetap keluar.
   try {
     const { data } = await client.mutate({ mutation: LOGOUT_MUTATION });
     return data?.logout ?? { success: true };
+  } catch {
+    return { success: true };
   } finally {
     await clearAuthStorage();
     const { useAuthStore } = await import('../store/auth');
