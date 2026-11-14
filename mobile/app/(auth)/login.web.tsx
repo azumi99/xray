@@ -30,11 +30,16 @@ export default function LoginWebScreen() {
     try {
       const response = await apiLogin({ email, password });
       if (response && response.token) {
+        const warehouse = response.user?.warehouse || 'bgd';
         login(response.token, {
           name: response.user?.name || '',
           id: Number(response.user?.id),
+          email: response.user?.email || '',
+          warehouse,
         });
-        router.replace('/dashboard');
+        // Langsung ke dashboard gudang milik user (bgd|cas; all → bgd)
+        const wh = warehouse !== 'all' && warehouse ? warehouse : 'bgd';
+        router.replace(`/dashboard/${wh}`);
       } else {
         throw new Error('Format respons login tidak valid');
       }
