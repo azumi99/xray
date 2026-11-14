@@ -10,14 +10,19 @@ const AUTH_TOKEN_KEY = "token";
 const GRAPHQL_URI =
   process.env.EXPO_PUBLIC_GRAPHQL_URL || 'http://localhost:3000/graphql';
 
-// Gudang aktif untuk SEMUA request dari client ini (header x-warehouse).
-// Di-set halaman dashboard per-gudang; native app tidak pernah meng-set → BGD.
-let currentWarehouse = 'bgd';
+// Gudang aktif untuk request dari client ini (header x-warehouse).
+// null = jangan kirim header → backend memakai gudang dari klaim token
+// (perilaku native app: selalu ikut hak akses user, bebas race timing).
+// Web dashboard meng-set eksplisit via setGraphqlWarehouse.
+let currentWarehouse: string | null = null;
 export function setGraphqlWarehouse(warehouse: string) {
   currentWarehouse = warehouse === 'cas' ? 'cas' : 'bgd';
 }
+export function clearGraphqlWarehouse() {
+  currentWarehouse = null;
+}
 export function getGraphqlWarehouse(): string {
-  return currentWarehouse;
+  return currentWarehouse ?? 'bgd';
 }
 
 // HTTP link to GraphQL server
@@ -39,7 +44,7 @@ const authLink = setContext(async (_, { headers }) => {
     headers: {
       ...headers,
       authorization: token ? `Bearer ${token}` : "",
-      'x-warehouse': currentWarehouse,
+      ...(currentWarehouse ? { 'x-warehouse': currentWarehouse } : {}),
     }
   }
 });

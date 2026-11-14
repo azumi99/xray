@@ -13,7 +13,10 @@ export const warehouseAls = new AsyncLocalStorage<{ warehouse: Warehouse }>();
 const jwt = new JwtService({ secret: process.env.JWT_SECRET ?? 'dev-secret-change-me' });
 
 export function warehouseMiddleware(req: Request, res: Response, next: NextFunction) {
-  const raw = String(req.headers['x-warehouse'] ?? (req.query as Record<string, unknown>)?.wh ?? 'bgd').toLowerCase();
+  const rawHeader = req.headers['x-warehouse'];
+  const rawQuery = (req.query as Record<string, unknown>)?.wh;
+  const explicit = rawHeader !== undefined || rawQuery !== undefined;
+  const raw = String(rawHeader ?? rawQuery ?? 'bgd').toLowerCase();
   const warehouse: Warehouse = raw === 'cas' ? 'cas' : 'bgd';
   // Guard hak akses: user (bila login) hanya boleh gudang miliknya.
   // 'all' = dua-duanya; request tanpa token valid (login, publik) lolos tanpa clamp.
@@ -23,9 +26,16 @@ export function warehouseMiddleware(req: Request, res: Response, next: NextFunct
       .verifyAsync(auth.slice(7))
       .then((payload) => {
         const allowed = String((payload as { wh?: string }).wh ?? '');
-        if (allowed && allowed !== 'all' && allowed !== warehouse) {
-          // Header CORS wajib: middleware ini berjalan SEBELUM cors milik Nest,
-          // tanpa ini browser memblokir respons error ("Failed to fetch").
+        if (!allowed) {
+          warehouseAls.run({ warehouse }, next);
+          return;
+        }
+        if (allowed === 'all') {
+          warehouseAls.run({ warehouse }, next);
+          return;
+        }
+        if (explicit && allowed !== warehouse) {
+          // Header/wh eksplisit (web dashboard) menuntut gudang di luar hak → tolak.
           const origin = typeof req.headers.origin === 'string' ? req.headers.origin : '*';
           res.setHeader('Access-Control-Allow-Origin', origin);
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-warehouse');
@@ -35,7 +45,8 @@ export function warehouseMiddleware(req: Request, res: Response, next: NextFunct
           });
           return;
         }
-        warehouseAls.run({ warehouse }, next);
+        // TANPA gudang eksplisit (native app) → ikut hak akses user, bukan default bgd.
+        warehouseAls.run({ warehouse: allowed === 'cas' ? 'cas' : 'bgd' }, next);
       })
       .catch(() => warehouseAls.run({ warehouse }, next)); // token invalid → jalur auth masing-masing yang menolak
     return;

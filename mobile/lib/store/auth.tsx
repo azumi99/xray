@@ -21,8 +21,10 @@ type AuthState = {
 /** Sinkronkan gudang aktif (header x-warehouse + SSE) dengan user yang login.
  *  'all' → bgd (default). Dipanggil login/logout/refresh me. */
 const applyWarehouse = (user?: { warehouse?: string } | null) => {
-  const wh = user?.warehouse && user.warehouse !== 'all' ? user.warehouse : 'bgd';
-  void import('@/graphql/client').then(({ setGraphqlWarehouse }) => setGraphqlWarehouse(wh));
+  void import('@/graphql/client').then(({ setGraphqlWarehouse, clearGraphqlWarehouse }) => {
+    if (user?.warehouse && user.warehouse !== 'all') setGraphqlWarehouse(user.warehouse);
+    else clearGraphqlWarehouse(); // native tanpa preferensi → backend pakai hak akses dari token
+  });
   void import('@/lib/api/awbEvents').then(({ resetAwbSnapshotSource }) => resetAwbSnapshotSource());
 };
 
@@ -53,8 +55,10 @@ export const useAuthStore = create<AuthState>()(
         useAuthStore.setState({ isLoading: false });
         // Sesi lama dengan user tersimpan: langsung sinkronkan gudang aktif
         if (state?.user) applyWarehouse(state.user);
-        // Session ada tapi user belum terisi (login lama): ambil dari backend via query me
-        if (state?.session && !state?.user) {
+        // Selalu refresh me saat ada session: user lama mungkin tanpa warehouse
+        // (persist era sebelum multi-gudang) → hak akses harus diambil ulang,
+        // kalau tidak user CAS kena 403 karena dianggap BGD.
+        if (state?.session) {
           try {
             const { getCurrentUser } = await import("../api/authAPI");
             const me = await getCurrentUser();
