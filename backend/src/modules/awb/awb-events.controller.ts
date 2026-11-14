@@ -1,24 +1,21 @@
 import { Controller, Query, Req, Sse } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import type { Request } from 'express';
-import { AwbEventsService } from './awb-events.service.js';
 import { AwbRegistry } from './awb-registry.service.js';
 import type { Warehouse } from '../../warehouse.js';
 
 @Controller('awb-events')
 export class AwbEventsController {
-  constructor(
-    private readonly events: AwbEventsService,
-    private readonly registry: AwbRegistry,
-  ) {}
+  constructor(private readonly registry: AwbRegistry) {}
 
   @Sse()
   stream(@Query('wh') wh: string | undefined, @Req() _req: Request): Observable<{ type: string; data: unknown }> {
-    // Gudang dipilih saat koneksi dibuka (?wh=cas) — snapshot selalu dari
-    // database gudang tersebut selama koneksi hidup.
+    // Gudang dipilih saat koneksi dibuka (?wh=cas) — snapshot DAN event change
+    // (emitter) semuanya dari database gudang tersebut selama koneksi hidup.
     const warehouse: Warehouse = wh === 'cas' ? 'cas' : 'bgd';
     const awbService = this.registry.awb(warehouse);
     const hostawbService = this.registry.hostawb(warehouse);
+    const emitter = this.registry.events(warehouse).emitter;
     return new Observable((subscriber) => {
       let closed = false;
 
@@ -41,7 +38,7 @@ export class AwbEventsController {
       };
 
       const onChange = () => { void sendSnapshot(); };
-      this.events.emitter.on('awb_changed', onChange);
+      emitter.on('awb_changed', onChange);
       void sendSnapshot();
 
       // ponytail: cek fingerprint tiap 2s, push snapshot hanya saat data berubah
@@ -62,7 +59,7 @@ export class AwbEventsController {
       return () => {
         closed = true;
         clearInterval(refresh);
-        this.events.emitter.off('awb_changed', onChange);
+        emitter.off('awb_changed', onChange);
       };
     });
   }

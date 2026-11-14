@@ -13,7 +13,6 @@ import { AwbService } from './modules/awb/awb.service.js';
 import { AwbResolver } from './modules/awb/awb.resolver.js';
 import { HostawbService } from './modules/awb/hostawb.service.js';
 import { AwbRegistry } from './modules/awb/awb-registry.service.js';
-import { AwbEventsService } from './modules/awb/awb-events.service.js';
 import { AwbEventsController } from './modules/awb/awb-events.controller.js';
 import { AuthService } from './modules/auth/auth.service.js';
 import { AuthResolver } from './modules/auth/auth.resolver.js';
@@ -71,11 +70,9 @@ const ENTITIES = [AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User, Label
   controllers: [AppController, UploadsController, AwbEventsController, VisionController],
   providers: [
     AppService,
-    AwbService,
     AwbResolver,
     HostawbService,
     AwbRegistry,
-    AwbEventsService,
     AuthService,
     AuthResolver,
     OcrQueueService,

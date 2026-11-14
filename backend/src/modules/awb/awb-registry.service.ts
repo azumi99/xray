@@ -17,11 +17,15 @@ import { currentWarehouse, type Warehouse } from '../../warehouse.js';
 export class AwbRegistry implements OnModuleInit, OnModuleDestroy {
   private cas?: { awb: AwbService; hostawb: HostawbService };
 
+  /** Emitter SSE per gudang — capture di CAS tidak lagi memicu refresh koneksi BGD
+   *  (dan sebaliknya). Instantiasi langsung: kelas hanya bungkus EventEmitter. */
+  private readonly bgdEvents = new AwbEventsService();
+  private readonly casEvents = new AwbEventsService();
+
   constructor(
     @InjectRepository(AirwaybillXray) private readonly bgdAwbRepo: Repository<AirwaybillXray>,
     @InjectRepository(AirwaybillXrayDetail) private readonly bgdDetailRepo: Repository<AirwaybillXrayDetail>,
     @InjectRepository(WatchedFile) private readonly bgdFileRepo: Repository<WatchedFile>,
-    private readonly events: AwbEventsService,
     private readonly bgdHostawb: HostawbService,
     @Inject(getDataSourceToken('cas')) private readonly casSource: DataSource,
   ) {}
@@ -31,7 +35,7 @@ export class AwbRegistry implements OnModuleInit, OnModuleDestroy {
   private bgdAwb!: AwbService;
 
   onModuleInit() {
-    this.bgdAwb = new AwbService(this.bgdAwbRepo, this.bgdDetailRepo, this.bgdFileRepo, this.events, this.bgdHostawb);
+    this.bgdAwb = new AwbService(this.bgdAwbRepo, this.bgdDetailRepo, this.bgdFileRepo, this.bgdEvents, this.bgdHostawb);
     const casHostawb = new HostawbService({
       host: process.env.CAS_MANIFEST_DB_HOST,
       port: Number(process.env.CAS_MANIFEST_DB_PORT ?? 3309),
@@ -44,11 +48,16 @@ export class AwbRegistry implements OnModuleInit, OnModuleDestroy {
         this.casSource.getRepository(AirwaybillXray),
         this.casSource.getRepository(AirwaybillXrayDetail),
         this.casSource.getRepository(WatchedFile),
-        this.events,
+        this.casEvents,
         casHostawb,
       ),
       hostawb: casHostawb,
     };
+  }
+
+  /** Emitter per gudang — dipakai SSE controller untuk subscribe/unsubscribe. */
+  events(warehouse: Warehouse = currentWarehouse()): AwbEventsService {
+    return warehouse === 'cas' ? this.casEvents : this.bgdEvents;
   }
 
   async onModuleDestroy() {
