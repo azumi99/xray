@@ -1,7 +1,7 @@
 import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
 import { Module } from '@nestjs/common';
 import { GraphQLModule } from '@nestjs/graphql';
-import { TypeOrmModule, getDataSourceToken } from '@nestjs/typeorm';
+import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
@@ -24,7 +24,6 @@ import { OpenCvService } from './modules/vision/opencv.service.js';
 import { VisionController } from './modules/vision/vision.controller.js';
 import { UploadsController } from './modules/upload/uploads.controller.js';
 import { LabelsModule } from './modules/labels/labels.module.js';
-import { LabelsService } from './modules/labels/labels.service.js';
 
 const ENTITIES = [AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User, LabelFedex];
 
@@ -83,16 +82,7 @@ const ENTITIES = [AirwaybillXray, AirwaybillXrayDetail, WatchedFile, User, Label
     OcrResolver,
     YoloService,
     OpenCvService,
-    // Labels gudang CAS — instance kedua dengan repository koneksi 'cas'
-    ...(process.env.CAS_DB_ENABLED === 'false'
-      ? []
-      : [{
-          provide: 'CAS_LABELS_SERVICE',
-          inject: [getDataSourceToken('cas')],
-          useFactory: (source: import('typeorm').DataSource) => new LabelsService(source.getRepository(LabelFedex)),
-        }]),
   ],
 })
-// (middleware gudang dipasang di main.ts pada instance express paling depan)
 export class AppModule {}
 
