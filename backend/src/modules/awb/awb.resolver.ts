@@ -1,9 +1,8 @@
 import { Args, ID, Int, Mutation, Query, ResolveField, Resolver } from '@nestjs/graphql';
-import { AwbService } from './awb.service.js';
 import { AirwaybillXray, AirwaybillXrayDetail } from '../../entities/airwaybill-xray.entity.js';
 import { WatchedFile } from '../../entities/watched-file.entity.js';
 import { HostawbData } from './hostawb.types.js';
-import { HostawbService } from './hostawb.service.js';
+import { AwbRegistry } from './awb-registry.service.js';
 import {
   AirwaybillXrayPage,
   CreateAirwaybillXrayDetailInput,
@@ -16,10 +15,17 @@ import {
 
 @Resolver(() => AirwaybillXray)
 export class AwbResolver {
-  constructor(
-    private readonly awbService: AwbService,
-    private readonly hostawbService: HostawbService,
-  ) {}
+  constructor(private readonly registry: AwbRegistry) {}
+
+  /** Service per gudang aktif (x-warehouse header, lihat warehouse.ts) —
+   *  seluruh method resolver memakai getter ini, bodies tidak berubah. */
+  private get awbService() {
+    return this.registry.awb();
+  }
+
+  private get hostawbService() {
+    return this.registry.hostawb();
+  }
 
   @ResolveField('hostawb', () => HostawbData, { nullable: true })
   hostawb(parent: AirwaybillXray) {

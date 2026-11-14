@@ -11,36 +11,38 @@ import { API_ORIGIN } from '@/constants/api';
 
 type AwbSnapshot = { data?: unknown[] };
 type Listener = (payload: AwbSnapshot) => void;
+type Warehouse = 'bgd' | 'cas';
 
-let source: EventSource | null = null;
-const listeners = new Set<Listener>();
+// Satu koneksi SSE PER GUDANG (bgd/cas) — snapshot datang dari database
+// gudang masing-masing (lihat AwbEventsController ?wh=).
+const listeners: Record<Warehouse, Set<Listener>> = { bgd: new Set(), cas: new Set() };
+const sources: Record<Warehouse, EventSource | null> = { bgd: null, cas: null };
 
-const eventsUrl = `${API_ORIGIN}/api/awb-events`;
-
-export function subscribeAwbSnapshot(listener: Listener): () => void {
-  listeners.add(listener);
+export function subscribeAwbSnapshot(listener: Listener, warehouse: Warehouse = 'bgd'): () => void {
+  listeners[warehouse].add(listener);
   // Selalu buka koneksi baru saat ada subscriber masuk: server mengirim snapshot
   // awal pada connect, jadi tiap navigasi ke halaman (scan/dashboard) mendapat
   // data waiting-list segar tanpa menunggu perubahan data berikutnya.
-  if (source) {
-    source.close();
-    source = null;
+  if (sources[warehouse]) {
+    sources[warehouse]!.close();
+    sources[warehouse] = null;
   }
-  source = new EventSource(eventsUrl);
+  const source = new EventSource(`${API_ORIGIN}/api/awb-events?wh=${warehouse}`);
+  sources[warehouse] = source;
   source.addEventListener('snapshot', (event) => {
     try {
       const raw = JSON.parse((event as MessageEvent).data);
       // Snapshot bisa array langsung (format baru) atau { data: [...] } (lama)
       const payload: AwbSnapshot = Array.isArray(raw) ? { data: raw } : raw;
-      listeners.forEach((l) => l(payload));
+      listeners[warehouse].forEach((l) => l(payload));
     } catch { /* snapshot invalid, abaikan */ }
   });
   return () => {
-    listeners.delete(listener);
+    listeners[warehouse].delete(listener);
     // Tutup koneksi hanya kalau tidak ada lagi pemakai (mis. keluar dashboard)
-    if (listeners.size === 0 && source) {
-      source.close();
-      source = null;
+    if (listeners[warehouse].size === 0 && sources[warehouse]) {
+      sources[warehouse]!.close();
+      sources[warehouse] = null;
     }
   };
 }

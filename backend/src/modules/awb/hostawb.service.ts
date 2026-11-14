@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Inject, Injectable, Logger, OnModuleDestroy, Optional } from '@nestjs/common';
 import mysql from 'mysql2/promise';
 import { HostawbData } from './hostawb.types.js';
 
@@ -15,14 +15,19 @@ export class HostawbService implements OnModuleDestroy {
   private readonly logger = new Logger(HostawbService.name);
   private pool: mysql.Pool | null = null;
 
+  /** Opsi override koneksi (dipakai instance manifest CAS: rdwarehouse_sna via 3309).
+   *  Nilai tidak diisi → pakai HOSTAWB_* env (manifest BGD, rdwarehouse_jkt).
+   *  @Optional supaya instance DI (BGD) tidak wajib menyediakan token. */
+  constructor(@Optional() @Inject('HOSTAWB_OPTS') private readonly opts?: { host?: string; port?: number; user?: string; password?: string; database?: string }) {}
+
   private getPool(): mysql.Pool {
     if (!this.pool) {
       this.pool = mysql.createPool({
-        host: process.env.HOSTAWB_DB_HOST ?? '127.0.0.1',
-        port: Number(process.env.HOSTAWB_DB_PORT ?? 3307),
-        user: process.env.HOSTAWB_DB_USER ?? 'ipung',
-        password: process.env.HOSTAWB_DB_PASSWORD ?? '',
-        database: process.env.HOSTAWB_DB_NAME ?? 'rdwarehouse_jkt',
+        host: this.opts?.host ?? process.env.HOSTAWB_DB_HOST ?? '127.0.0.1',
+        port: Number(this.opts?.port ?? process.env.HOSTAWB_DB_PORT ?? 3307),
+        user: this.opts?.user ?? process.env.HOSTAWB_DB_USER ?? 'ipung',
+        password: this.opts?.password ?? process.env.HOSTAWB_DB_PASSWORD ?? '',
+        database: this.opts?.database ?? process.env.HOSTAWB_DB_NAME ?? 'rdwarehouse_jkt',
         connectionLimit: 3,
         connectTimeout: 5000,
       });

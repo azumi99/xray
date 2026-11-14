@@ -648,7 +648,7 @@ function AnimatedWaitRow({ entering, exiting, children }: { entering: boolean; e
   );
 }
 
-export function ScanCapture() {
+export function ScanCapture({ warehouse = 'bgd' }: { warehouse?: 'bgd' | 'cas' }) {
   const [capture] = useMutation(CAPTURE);
   const topFrame = useRef('');
   const sideFrame = useRef('');
@@ -789,10 +789,10 @@ export function ScanCapture() {
   return (
     <View style={{ gap: 16 }}>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 16 }}>
-        <CapturePanel title="X-ray Top" source="top" onTrigger={onTopTrigger} onFrame={(image) => { topFrame.current = image; }} />
+        <CapturePanel title={`X-ray Top — ${warehouse.toUpperCase()}`} source={warehouse === 'cas' ? 'cas-top' : 'top'} onTrigger={onTopTrigger} onFrame={(image) => { topFrame.current = image; }} />
         <CapturePanel
           title="X-ray Side"
-          source="side"
+          source={warehouse === 'cas' ? 'cas-side' : 'side'}
           onTrigger={() => {}}
           onFrame={(image) => {
             sideFrame.current = image;

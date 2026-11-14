@@ -97,7 +97,7 @@ async function printLabels(rows: LabelRow[], partMap: Map<number, number>) {
   setTimeout(() => w.print(), 300);
 }
 
-export function LabelsScreen() {
+export function LabelsScreen({ warehouse = 'bgd' }: { warehouse?: 'bgd' | 'cas' }) {
   const { theme } = useThemeStore();
   // Toast lokal sederhana (tanpa provider global): banner atas muncul 3.5s
   const toastAnim = useRef(new Animated.Value(0)).current;
@@ -140,7 +140,7 @@ export function LabelsScreen() {
   const deleteIds = async (ids: number[], label: string) => {
     if (!window.confirm(`Delete ${label}?`)) return;
     try {
-      const res = await fetch(`${API_ORIGIN}/api/labels/delete-many`, {
+      const res = await fetch(`${API_ORIGIN}/api/labels/delete-many?wh=${warehouse}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ ids }),
@@ -236,7 +236,7 @@ export function LabelsScreen() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${API_ORIGIN}/api/labels`);
+      const res = await fetch(`${API_ORIGIN}/api/labels?wh=${warehouse}`);
       setRows(await res.json());
     } finally {
       setLoading(false);
@@ -252,7 +252,7 @@ export function LabelsScreen() {
     try {
       const body = new FormData();
       body.append('file', file);
-      const res = await fetch(`${API_ORIGIN}/api/labels/import`, { method: 'POST', body });
+      const res = await fetch(`${API_ORIGIN}/api/labels/import?wh=${warehouse}`, { method: 'POST', body });
       if (!res.ok) throw new Error(`Import failed (${res.status})`);
       const result = await res.json();
       await load();

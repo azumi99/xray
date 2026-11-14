@@ -1,14 +1,20 @@
 import 'dotenv/config';
 import { apiReference } from '@scalar/nestjs-api-reference';
 import { NestFactory } from '@nestjs/core';
-import { NestExpressApplication } from '@nestjs/platform-express';
+import { NestExpressApplication, ExpressAdapter } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import express from 'express';
 import { existsSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { AppModule } from './app.module.js';
+import { warehouseMiddleware } from './warehouse.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, { bodyParser: false });
+  // Instance express sendiri supaya middleware gudang (x-warehouse → ALS)
+  // TERPASANG PALING DEPAN — sebelum route GraphQL/Apollo diregistrasi Nest.
+  const server = express();
+  server.use(warehouseMiddleware);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, new ExpressAdapter(server), { bodyParser: false });
   app.useBodyParser('json', { limit: '50mb' });
   app.useStaticAssets(join(process.cwd(), 'uploads'), { prefix: '/uploads' });
   app.enableCors();

@@ -10,6 +10,7 @@ import { useAuth } from '@/lib/store/auth';
 import { useGroupModeStore } from '@/lib/store/groupModeStore';
 import { useThemeStore } from '@/lib/store/themeStore';
 import { LabelsScreen } from '@/components/web/LabelsScreen';
+import { setGraphqlWarehouse } from '@/graphql/client';
 import { gql, useQuery } from '@apollo/client';
 import { PackageIcon, TagIcon } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit/v2';
@@ -75,7 +76,7 @@ const TONES = {
   amber: { fg: '#B45309' },
 };
 
-export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 'scan' }) {
+export function DashboardScreen({ section, warehouse = 'bgd' }: { section: 'dashboard' | 'awb' | 'scan' | 'labels'; warehouse?: 'bgd' | 'cas' }) {
   const { session, isLoading } = useAuth();
   const { theme } = useThemeStore();
   const { groupMode, setGroupMode } = useGroupModeStore();
@@ -92,6 +93,12 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
   const filtersActive = !!(trimmed || appliedFilters);
   const { isSmall } = useBreakpoint();
   const { width: winWidth } = useWindowDimensions();
+
+  // Gudang menentukan database tujuan SEMUA query/mutasi halaman ini
+  // (header x-warehouse di Apollo client) — native app selalu BGD.
+  useEffect(() => {
+    setGraphqlWarehouse(warehouse);
+  }, [warehouse]);
 
   const { data, loading, refetch } = useQuery(GET_DASHBOARD_AWBS, {
     variables: { first: PAGE_SIZE, page, search: trimmed, noSearch: !filtersActive, ungrouped: !groupMode, filters: appliedFilters },
@@ -114,7 +121,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
       setSseSnapshot(snapshot as { data: AwbRow[]; paginatorInfo?: { total?: number } } | null);
       // Segarkan halaman aktif agar tabel tetap sinkron (SSE snapshot hanya halaman 1)
       void refetch({ first: PAGE_SIZE, page, search: trimmed, noSearch: !filtersActive, ungrouped: !groupMode, filters: appliedFilters });
-    });
+    }, warehouse);
   }, [session, refetch, page, trimmed]);
 
   const paginator = filtersActive ? data?.searchAirwaybillxrays?.paginatorInfo : data?.airwaybillxrays?.paginatorInfo;
@@ -192,7 +199,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
       total={total}
       groupMode={groupMode}
       onChangePage={setPage}
-      onOpen={(id) => router.push(`/dashboard/detail/${id}`)}
+      onOpen={(id) => router.push(`/dashboard/${warehouse}/detail/${id}`)}
     />
   );
 
@@ -200,13 +207,13 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
     <View style={{ flex: 1, flexDirection: 'row', backgroundColor: isDark ? '#0B1220' : '#F8FAFC' }}>
       <DashboardSidebar
         active={section}
-        onNavigate={(key) => router.push(key === 'dashboard' ? '/dashboard' : (`/dashboard/${key}` as never))}
+        onNavigate={(key) => router.push(key === 'dashboard' ? `/dashboard/${warehouse}/dashboard` : (`/dashboard/${warehouse}/${key}` as never))}
         onLogout={handleLogout}
       />
 
       <View style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
         <DashboardHeader
-          title={section === 'awb' ? 'AWB List' : section === 'scan' ? 'X-ray Capture' : section === 'labels' ? 'Print Label' : 'Dashboard'}
+          title={section === 'awb' ? `AWB List — ${warehouse.toUpperCase()}` : section === 'scan' ? `X-ray Capture — ${warehouse.toUpperCase()}` : section === 'labels' ? `Print Label — ${warehouse.toUpperCase()}` : `Dashboard — ${warehouse.toUpperCase()}`}
           subtitle={section === 'scan' ? 'Live top and side capture' : section === 'labels' ? 'Import Excel FedEx → print 10 × 5 cm' : `${total} AWB records stored`}
           search={section === 'awb' ? search : undefined}
           onSearch={section === 'awb' ? setSearch : undefined}
@@ -265,7 +272,7 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
                   Open AWB List to view complete records, or scan a new label from the mobile app.
                 </Text>
                 <TouchableOpacity
-                  onPress={() => router.push('/dashboard/awb')}
+                  onPress={() => router.push(`/dashboard/${warehouse}/awb`)}
                   style={{ alignSelf: 'flex-start', backgroundColor: '#0284C7', borderRadius: 10, paddingVertical: 11, paddingHorizontal: 20, marginTop: 4 }}
                 >
                   <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 13.5 }}>View AWB List →</Text>
@@ -345,8 +352,8 @@ export function DashboardScreen({ section }: { section: 'dashboard' | 'awb' | 's
             </>
           ) : null}
 
-          {section === 'scan' ? <ScanCapture /> : null}
-          {section === 'labels' ? <LabelsScreen /> : null}
+          {section === 'scan' ? <ScanCapture warehouse={warehouse} /> : null}
+          {section === 'labels' ? <LabelsScreen warehouse={warehouse} /> : null}
 
           <Text style={{ fontSize: 11, color: '#9CA3AF', textAlign: 'center' }}>
             AWB X-Ray Web Dashboard
