@@ -8,7 +8,7 @@ const AUTH_TOKEN_KEY = "token";
 export interface LoginCredentials { email: string; password: string; }
 export interface LoginResponse {
   token: string;
-  user: { id: string; name: string; email: string };
+  user: { id: string; name: string; email: string; warehouse?: string };
 }
 export interface LogoutResponse { success: boolean; }
 
@@ -26,7 +26,7 @@ const LOGOUT_MUTATION = gql`
 `;
 
 const ME_QUERY = gql`
-  query Me { me { id name email } }
+  query Me { me { id name email warehouse } }
 `;
 
 const CHANGE_PASSWORD_MUTATION = gql`
