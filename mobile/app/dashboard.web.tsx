@@ -1,37 +1,30 @@
-import { useRouter } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import React from 'react';
 
-/** /dashboard tanpa gudang → halaman pemilihan gudang.
- *  Dashboard sekarang terpisah per database: pilih BGD atau CAS. */
+/** /dashboard TANPA gudang → 404. Dashboard wajib menyertakan gudang:
+ *  /dashboard/bgd atau /dashboard/cas */
 export default function DashboardWebScreen() {
   const router = useRouter();
-  const warehouses = [
-    { key: 'bgd', label: 'BGD', desc: 'awbxray_bgd · rdwarehouse_jkt' },
-    { key: 'cas', label: 'CAS', desc: 'awbxray_cas · rdwarehouse_sna' },
-  ] as const;
   return (
     <View style={styles.wrap}>
-      <Text style={styles.title}>Pilih Gudang</Text>
-      <Text style={styles.subtitle}>Dashboard X-ray dipisah per gudang — gunakan /dashboard/bgd atau /dashboard/cas</Text>
+      <Text style={styles.code}>404</Text>
+      <Text style={styles.title}>Gudang tidak ditentukan</Text>
+      <Text style={styles.subtitle}>Dashboard wajib menyertakan gudang. Gunakan:</Text>
       <View style={styles.row}>
-        {warehouses.map((w) => (
-          <Pressable key={w.key} style={styles.card} onPress={() => router.push(`/dashboard/${w.key}`)}>
-            <Text style={styles.cardTitle}>{w.label}</Text>
-            <Text style={styles.cardDesc}>{w.desc}</Text>
-          </Pressable>
-        ))}
+        <Pressable style={styles.link} onPress={() => router.push('/dashboard/bgd')}><Text style={styles.linkText}>/dashboard/bgd</Text></Pressable>
+        <Pressable style={styles.link} onPress={() => router.push('/dashboard/cas')}><Text style={styles.linkText}>/dashboard/cas</Text></Pressable>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, backgroundColor: '#0B1220' },
-  title: { fontSize: 24, fontWeight: '800', color: '#F8FAFC' },
+  wrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, backgroundColor: '#0B1220' },
+  code: { fontSize: 72, fontWeight: '900', color: '#EF4444', letterSpacing: 4 },
+  title: { fontSize: 18, fontWeight: '800', color: '#F8FAFC' },
   subtitle: { fontSize: 13, color: '#94A3B8' },
-  row: { flexDirection: 'row', gap: 20 },
-  card: { borderWidth: 2, borderColor: '#38BDF8', borderRadius: 14, paddingVertical: 28, paddingHorizontal: 40, alignItems: 'center', gap: 6, cursor: 'pointer' },
-  cardTitle: { fontSize: 30, fontWeight: '800', color: '#38BDF8', letterSpacing: 2 },
-  cardDesc: { fontSize: 11, color: '#94A3B8' },
+  row: { flexDirection: 'row', gap: 14, marginTop: 6 },
+  link: { borderWidth: 1, borderColor: '#38BDF8', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10, cursor: 'pointer' },
+  linkText: { color: '#38BDF8', fontWeight: '700', fontSize: 13 },
 });
