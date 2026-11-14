@@ -22,6 +22,11 @@ export class User {
   @Column({ type: 'int', default: 0 })
   token_version!: number;
 
+  /** Hak akses gudang: 'bgd' | 'cas' | 'all' (dua-duanya) */
+  @Column({ type: 'varchar', length: 8, default: 'bgd' })
+  @Field()
+  warehouse!: string;
+
   @CreateDateColumn()
   created_at!: Date;
 

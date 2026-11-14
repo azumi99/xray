@@ -64,13 +64,15 @@ const LoginScreen = () => {
           name: response.user?.name || '',
           id: Number(response.user?.id),
           email: response.user?.email || '',
+          warehouse: response.user?.warehouse || 'bgd',
         };
         console.log('User data extracted:', response); // Debug log
 
         login(response.token, userData);
 
-        // Navigate to the main app
-        router.replace('/(tabs)/list');
+        // Navigate: web → dashboard gudang milik user; native → tab list
+        const wh = (userData.warehouse !== 'all' && userData.warehouse) || 'bgd';
+        router.replace(Platform.OS === 'web' ? `/dashboard/${wh}` : '/(tabs)/list');
       } else {
         throw new Error('Invalid login response format');
       }

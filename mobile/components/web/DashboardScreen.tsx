@@ -77,7 +77,7 @@ const TONES = {
 };
 
 export function DashboardScreen({ section, warehouse = 'bgd' }: { section: 'dashboard' | 'awb' | 'scan' | 'labels'; warehouse?: 'bgd' | 'cas' }) {
-  const { session, isLoading } = useAuth();
+  const { session, isLoading, user } = useAuth();
   const { theme } = useThemeStore();
   const { groupMode, setGroupMode } = useGroupModeStore();
   const isDark = theme === 'dark';
@@ -99,6 +99,15 @@ export function DashboardScreen({ section, warehouse = 'bgd' }: { section: 'dash
   useEffect(() => {
     setGraphqlWarehouse(warehouse);
   }, [warehouse]);
+
+  // Guard hak akses: user yang hanya punya satu gudang dipaksa ke gudangnya
+  // (backend juga 403 — ini hanya redirect UX).
+  const userWarehouse = (user as { warehouse?: string } | null)?.warehouse;
+  useEffect(() => {
+    if (!isLoading && session && userWarehouse && userWarehouse !== 'all' && userWarehouse !== warehouse) {
+      router.replace(`/dashboard/${userWarehouse}`);
+    }
+  }, [isLoading, session, userWarehouse, warehouse, router]);
 
   const { data, loading, refetch } = useQuery(GET_DASHBOARD_AWBS, {
     variables: { first: PAGE_SIZE, page, search: trimmed, noSearch: !filtersActive, ungrouped: !groupMode, filters: appliedFilters },

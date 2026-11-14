@@ -10,9 +10,11 @@ type AuthState = {
     name?: string;
     id?: number;
     email?: string;
+    /** Hak akses gudang: 'bgd' | 'cas' | 'all' */
+    warehouse?: string;
   } | null;
   isLoading: boolean;
-  login: (token: string, user?: { name?: string; id?: number; email?: string }) => void;
+  login: (token: string, user?: { name?: string; id?: number; email?: string; warehouse?: string }) => void;
   logout: () => void;
 };
 
@@ -42,7 +44,7 @@ export const useAuthStore = create<AuthState>()(
             const { getCurrentUser } = await import("../api/authAPI");
             const me = await getCurrentUser();
             if (me) {
-              useAuthStore.setState({ user: { id: Number(me.id), name: me.name, email: me.email } });
+              useAuthStore.setState({ user: { id: Number(me.id), name: me.name, email: me.email, warehouse: me.warehouse ?? 'bgd' } });
             }
           } catch {
             // token invalid biarkan apa adanya
